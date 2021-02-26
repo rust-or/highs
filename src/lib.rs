@@ -184,6 +184,53 @@ impl SolvedModel {
         let model_status = unsafe { Highs_getModelStatus(self.highs, 0) };
         HighsModelStatus::try_from(model_status).unwrap()
     }
+    pub fn get_solution(&self) -> Solution {
+        let mut colvalue: Vec<f64> = vec![0.; numcol];
+        let mut coldual: Vec<f64> = vec![0.; numcol];
+        let mut rowvalue: Vec<f64> = vec![0.; numrow];
+        let mut rowdual: Vec<f64> = vec![0.; numrow];
+
+
+        // Get the primal and dual solution
+        unsafe {
+            Highs_getSolution(
+                self.highs,
+                colvalue.as_mut_ptr(),
+                coldual.as_mut_ptr(),
+                rowvalue.as_mut_ptr(),
+                rowdual.as_mut_ptr(),
+            );
+        }
+
+        Solution {
+            colvalue,
+            coldual,
+            rowvalue,
+            rowdual,
+        }
+    }
+}
+
+pub struct Solution {
+    colvalue: Vec<f64>,
+    coldual: Vec<f64>,
+    rowvalue: Vec<f64>,
+    rowdual: Vec<f64>,
+}
+
+impl Solution {
+    pub fn columns(&self) -> &[f64] {
+        &self.colvalue
+    }
+    pub fn dual_columns(&self) -> &[f64] {
+        &self.coldual
+    }
+    pub fn rows(&self) -> &[f64] {
+        &self.rowvalue
+    }
+    pub fn dual_rows(&self) -> &[f64] {
+        &self.rowvalue
+    }
 }
 
 fn handle_status(status: c_int) {
