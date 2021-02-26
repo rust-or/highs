@@ -52,7 +52,7 @@ impl Problem {
     /// Add a column (a variable) to the problem.
     /// col_factor represents the factor in front of the variable in the objective function.
     /// The row_factors argument defines how much this variable weights in each constraint.
-    pub fn add_column<B: RangeBounds<f64>, I: IntoIterator<Item=(Row, f64)>>(
+    pub fn add_column<B: RangeBounds<f64>, I: IntoIterator<Item = (Row, f64)>>(
         &mut self,
         col_factor: f64,
         bounds: B,
@@ -189,7 +189,6 @@ impl SolvedModel {
         let mut coldual: Vec<f64> = vec![0.; self.num_cols()];
         let mut rowvalue: Vec<f64> = vec![0.; self.num_rows()];
         let mut rowdual: Vec<f64> = vec![0.; self.num_rows()];
-
 
         // Get the primal and dual solution
         unsafe {
