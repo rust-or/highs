@@ -154,7 +154,6 @@ impl Drop for Model {
 
 impl SolvedModel {
     pub fn status(&self) -> HighsModelStatus {
-        use std::convert::TryFrom;
         let model_status = unsafe { Highs_getModelStatus(self.highs, 0) };
         HighsModelStatus::try_from(model_status).unwrap()
     }
