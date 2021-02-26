@@ -1,0 +1,16 @@
+[package]
+name = "highs"
+version = "0.0.0"
+authors = ["Ophir LOJKINE", "rust-or"]
+edition = "2018"
+description = "Safe rust bindings for the HiGHS linear programming solver. See http://highs.dev."
+license-file = "LICENSE"
+repository = "https://github.com/rust-or/highs"
+keywords = ["linear-programming", "optimization", "math", "solver"]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+highs-sys = "0.0.5"
+log = "0.4"
