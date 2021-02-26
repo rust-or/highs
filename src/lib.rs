@@ -185,10 +185,10 @@ impl SolvedModel {
         HighsModelStatus::try_from(model_status).unwrap()
     }
     pub fn get_solution(&self) -> Solution {
-        let mut colvalue: Vec<f64> = vec![0.; numcol];
-        let mut coldual: Vec<f64> = vec![0.; numcol];
-        let mut rowvalue: Vec<f64> = vec![0.; numrow];
-        let mut rowdual: Vec<f64> = vec![0.; numrow];
+        let mut colvalue: Vec<f64> = vec![0.; self.num_cols()];
+        let mut coldual: Vec<f64> = vec![0.; self.num_cols()];
+        let mut rowvalue: Vec<f64> = vec![0.; self.num_rows()];
+        let mut rowdual: Vec<f64> = vec![0.; self.num_rows()];
 
 
         // Get the primal and dual solution
@@ -208,6 +208,16 @@ impl SolvedModel {
             rowvalue,
             rowdual,
         }
+    }
+
+    fn num_cols(&self) -> usize {
+        let n = unsafe { Highs_getNumCols(self.highs) };
+        n.try_into().unwrap()
+    }
+
+    fn num_rows(&self) -> usize {
+        let n = unsafe { Highs_getNumRows(self.highs) };
+        n.try_into().unwrap()
     }
 }
 
@@ -229,7 +239,7 @@ impl Solution {
         &self.rowvalue
     }
     pub fn dual_rows(&self) -> &[f64] {
-        &self.rowvalue
+        &self.rowdual
     }
 }
 
