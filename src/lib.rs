@@ -36,6 +36,10 @@ impl Problem {
     fn num_non_zero(&self) -> usize {
         self.avalue.len()
     }
+
+    /// Add a row (a constraint) to the problem.
+    /// The bounds indicate the maximum allowed value for the linear combination of variables that will be in the constraint.
+    /// The actual constraint definition happens when adding a variable to the problem with add_column.
     pub fn add_row<B: RangeBounds<f64>>(&mut self, bounds: B) -> Row {
         let r = Row(self.num_rows().try_into().unwrap());
         let low = bound_value(bounds.start_bound()).unwrap_or(f64::NEG_INFINITY);
@@ -44,13 +48,34 @@ impl Problem {
         self.rowupper.push(high);
         r
     }
+
+    /// Add a column (a variable) to the problem.
+    /// col_factor represents the factor in front of the variable in the objective function.
+    /// The row_factors argument defines how much this variable weights in each constraint.
+    pub fn add_column<B: RangeBounds<f64>, I: IntoIterator<Item=(Row, f64)>>(
+        &mut self,
+        col_factor: f64,
+        bounds: B,
+        row_factors: I,
+    ) {
+        self.colcost.push(col_factor);
+        let low = bound_value(bounds.start_bound()).unwrap_or(f64::NEG_INFINITY);
+        let high = bound_value(bounds.start_bound()).unwrap_or(f64::INFINITY);
+        self.collower.push(low);
+        self.colupper.push(high);
+        self.astart.push(self.aindex.len().try_into().unwrap());
+        for (row, factor) in row_factors.into_iter() {
+            self.aindex.push(row.0);
+            self.avalue.push(factor);
+        }
+    }
 }
 
 fn bound_value(b: Bound<&f64>) -> Option<f64> {
     match b {
         Bound::Included(v) => Some(*v),
         Bound::Excluded(v) => Some(*v),
-        Bound::Unbounded => None
+        Bound::Unbounded => None,
     }
 }
 
@@ -95,9 +120,10 @@ impl Model {
 
     pub fn set_problem(&mut self, problem: Problem) {
         unsafe {
-            log::debug!("Adding a problem with {} variables and {} constraints to HiGHS",
-                        problem.num_cols(),
-                        problem.num_rows()
+            log::debug!(
+                "Adding a problem with {} variables and {} constraints to HiGHS",
+                problem.num_cols(),
+                problem.num_rows()
             );
             handle_status(Highs_passLp(
                 self.highs,
@@ -132,7 +158,9 @@ impl Model {
 
 impl From<SolvedModel> for Model {
     fn from(solved: SolvedModel) -> Self {
-        Self { highs: solved.highs }
+        Self {
+            highs: solved.highs,
+        }
     }
 }
 
@@ -151,7 +179,6 @@ impl Drop for Model {
     }
 }
 
-
 impl SolvedModel {
     pub fn status(&self) -> HighsModelStatus {
         let model_status = unsafe { Highs_getModelStatus(self.highs, 0) };
@@ -162,8 +189,14 @@ impl SolvedModel {
 fn handle_status(status: c_int) {
     match HighsStatus::try_from(status).unwrap() {
         HighsStatus::OK => {}
-        HighsStatus::Warning => { log::warn!("Warning from HiGHS !"); }
-        HighsStatus::Error => { panic!("An error was encountered in HiGHS. This is probably a memory allocation error."); }
+        HighsStatus::Warning => {
+            log::warn!("Warning from HiGHS !");
+        }
+        HighsStatus::Error => {
+            panic!(
+                "An error was encountered in HiGHS. This is probably a memory allocation error."
+            );
+        }
     }
 }
 

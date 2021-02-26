@@ -26,9 +26,13 @@ pub struct InvalidStatus(pub c_int);
 
 impl Debug for InvalidStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} is not a valid HiGHS model status. \
+        write!(
+            f,
+            "{} is not a valid HiGHS model status. \
         This error comes from a bug in highs rust bindings. \
-        Please report it.", self.0)
+        Please report it.",
+            self.0
+        )
     }
 }
 
@@ -48,12 +52,14 @@ impl TryFrom<c_int> for HighsModelStatus {
             MODEL_STATUS_PRIMAL_INFEASIBLE => Ok(Self::PrimalInfeasible),
             MODEL_STATUS_PRIMAL_UNBOUNDED => Ok(Self::PrimalUnbounded),
             MODEL_STATUS_OPTIMAL => Ok(Self::Optimal),
-            MODEL_STATUS_REACHED_DUAL_OBJECTIVE_VALUE_UPPER_BOUND => Ok(Self::ReachedDualObjectiveValueUpperBound),
+            MODEL_STATUS_REACHED_DUAL_OBJECTIVE_VALUE_UPPER_BOUND => {
+                Ok(Self::ReachedDualObjectiveValueUpperBound)
+            }
             MODEL_STATUS_REACHED_TIME_LIMIT => Ok(Self::ReachedTimeLimit),
             MODEL_STATUS_REACHED_ITERATION_LIMIT => Ok(Self::ReachedIterationLimit),
             MODEL_STATUS_PRIMAL_DUAL_INFEASIBLE => Ok(Self::PrimalDualInfeasible),
             MODEL_STATUS_DUAL_INFEASIBLE => Ok(Self::DualInfeasible),
-            n => Err(InvalidStatus(n))
+            n => Err(InvalidStatus(n)),
         }
     }
 }
@@ -65,7 +71,6 @@ pub enum HighsStatus {
     Error = 2,
 }
 
-
 impl TryFrom<c_int> for HighsStatus {
     type Error = InvalidStatus;
 
@@ -75,7 +80,7 @@ impl TryFrom<c_int> for HighsStatus {
             STATUS_OK => Ok(Self::OK),
             STATUS_WARNING => Ok(Self::Warning),
             STATUS_ERROR => Ok(Self::Error),
-            n => Err(InvalidStatus(n))
+            n => Err(InvalidStatus(n)),
         }
     }
 }
