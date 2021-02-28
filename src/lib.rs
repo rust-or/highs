@@ -335,16 +335,3 @@ fn handle_status(status: c_int) {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn solve_problem_empty() {
-        let mut model = Model::default();
-        model.set_problem(Problem::default());
-        let solved = model.solve();
-        assert_eq!(solved.status(), HighsModelStatus::ModelEmpty);
-    }
-}

@@ -18,6 +18,13 @@ pub enum HighsModelStatus {
     /// Unable to clean after solve
     PostsolveError = 5,
     /// No variables in the model: nothing to optimize
+    /// ```
+    /// use highs::*;
+    /// let mut model = Model::default();
+    /// model.set_problem(Problem::default());
+    /// let solved = model.solve();
+    /// assert_eq!(solved.status(), HighsModelStatus::ModelEmpty);
+    /// ```
     ModelEmpty = 6,
     /// There is no solution to the problem
     PrimalInfeasible = 7,
