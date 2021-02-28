@@ -1,3 +1,37 @@
+#![forbid(missing_docs)]
+//! Safe rust binding to the [HiGHS](https://highs.dev) linear programming solver.
+//!
+//! ## Usage example
+//!
+//! ```
+//! use highs::{Problem, Sense, Model, HighsModelStatus};
+//! // max: x + 2y + z
+//! // under constraints:
+//! // c1: 3x +  y      <= 6
+//! // c2:       y + 2z <= 7
+//! let mut pb = Problem::default();
+//! let c1 = pb.add_row(..6.);
+//! let c2 = pb.add_row(..7.);
+//! // x
+//! pb.add_column(1., 0.., &[(c1, 3.)]);
+//! // y
+//! pb.add_column(2., 0.., &[(c1, 1.), (c2, 1.)]);
+//! // z
+//! pb.add_column(1., 0.., vec![(c2, 2.)]);
+//! let mut model = Model::default();
+//! model.set_problem(pb);
+//! model.set_sense(Sense::Maximise);
+//!
+//! let solved = model.solve();
+//!
+//! assert_eq!(solved.status(), HighsModelStatus::Optimal);
+//!
+//! let solution = solved.get_solution();
+//! // The expected solution is x=0  y=6  z=0.5
+//! assert_eq!(solution.columns(), vec![0., 6., 0.5]);
+//! // All the constraints are at their maximum
+//! assert_eq!(solution.rows(), vec![6., 7.]);
+//! ```
 use std::convert::{TryFrom, TryInto};
 use std::ffi::c_void;
 use std::ops::{Bound, RangeBounds};
@@ -10,9 +44,11 @@ use std::borrow::Borrow;
 
 mod status;
 
+/// Represents a constraint
 #[derive(Debug, Clone, Copy)]
 pub struct Row(c_int);
 
+/// A complete optimization problem
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Problem {
     // columns
@@ -96,20 +132,25 @@ fn c(n: usize) -> c_int {
 }
 
 
+/// A model to solve
 #[derive(Debug, Default)]
 pub struct Model {
     highs: HighsPtr,
 }
 
+/// A solved model
 #[derive(Debug)]
 pub struct SolvedModel {
     highs: HighsPtr,
 }
 
+/// Whether to maximize or minimize the objective function
 #[repr(C)]
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum Sense {
+    /// max
     Maximise = -1,
+    /// min
     Minimise = 1,
 }
 
@@ -119,12 +160,14 @@ impl Model {
         Self::default()
     }
 
+    /// Set the optimization sense (minimize by default)
     pub fn set_sense(&mut self, sense: Sense) {
         unsafe {
             Highs_changeObjectiveSense(self.highs.mut_ptr(), sense as c_int);
         }
     }
 
+    /// Set the problem to optimize
     pub fn set_problem(&mut self, problem: Problem) {
         unsafe {
             log::debug!(
@@ -204,10 +247,13 @@ impl HighsPtr {
 }
 
 impl SolvedModel {
+    /// The status of the solution. Should be Optimal if everything went well
     pub fn status(&self) -> HighsModelStatus {
         let model_status = unsafe { Highs_getModelStatus(self.highs.unsafe_mut_ptr(), 0) };
         HighsModelStatus::try_from(model_status).unwrap()
     }
+
+    /// Get the solution to the problem
     pub fn get_solution(&self) -> Solution {
         let cols = self.num_cols();
         let rows = self.num_rows();
@@ -235,17 +281,20 @@ impl SolvedModel {
         }
     }
 
+    /// Number of variables
     fn num_cols(&self) -> usize {
         let n = unsafe { Highs_getNumCols(self.highs.unsafe_mut_ptr()) };
         n.try_into().unwrap()
     }
 
+    /// Number of constraints
     fn num_rows(&self) -> usize {
         let n = unsafe { Highs_getNumRows(self.highs.unsafe_mut_ptr()) };
         n.try_into().unwrap()
     }
 }
 
+/// Concrete values of the solution
 #[derive(Clone, Debug)]
 pub struct Solution {
     colvalue: Vec<f64>,
@@ -255,15 +304,19 @@ pub struct Solution {
 }
 
 impl Solution {
+    /// The optimal values for each variables (in the order they were added)
     pub fn columns(&self) -> &[f64] {
         &self.colvalue
     }
+    /// The optimal values for each variables in the dual problem (in the order they were added)
     pub fn dual_columns(&self) -> &[f64] {
         &self.coldual
     }
+    /// The value of the constraint functions
     pub fn rows(&self) -> &[f64] {
         &self.rowvalue
     }
+    /// The value of the constraint functions in the dual problem
     pub fn dual_rows(&self) -> &[f64] {
         &self.rowdual
     }
@@ -293,35 +346,5 @@ mod tests {
         model.set_problem(Problem::default());
         let solved = model.solve();
         assert_eq!(solved.status(), HighsModelStatus::ModelEmpty);
-    }
-
-    #[test]
-    fn solve_sum() {
-        // max: x + 2y + z
-        // under constraints:
-        // c1: 3x +  y      <= 6
-        // c2:       y + 2z <= 7
-        let mut pb = Problem::default();
-        let c1 = pb.add_row(..6.);
-        let c2 = pb.add_row(..7.);
-        // x
-        pb.add_column(1., 0.., &[(c1, 3.)]);
-        // y
-        pb.add_column(2., 0.., &[(c1, 1.), (c2, 1.)]);
-        // z
-        pb.add_column(1., 0.., vec![(c2, 2.)]);
-        let mut model = Model::default();
-        model.set_problem(pb);
-        model.set_sense(Sense::Maximise);
-
-        let solved = model.solve();
-
-        assert_eq!(solved.status(), HighsModelStatus::Optimal);
-
-        let solution = solved.get_solution();
-        // The expected solution is x=0  y=6  z=0.5
-        assert_eq!(solution.columns(), vec![0., 6., 0.5]);
-        // All the constraints are at their maximum
-        assert_eq!(solution.rows(), vec![6., 7.]);
     }
 }

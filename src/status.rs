@@ -2,25 +2,42 @@ use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
 use std::os::raw::c_int;
 
+/// The kinds of results of an optimization
 #[derive(Clone, Copy, Debug, PartialOrd, PartialEq, Ord, Eq)]
 pub enum HighsModelStatus {
+    /// not initialized
     NotSet = 0,
+    /// Unable to load model
     LoadError = 1,
+    /// invalid model
     ModelError = 2,
+    /// Unable to run the pre-solve phase
     PresolveError = 3,
+    /// Unable to solve
     SolveError = 4,
+    /// Unable to clean after solve
     PostsolveError = 5,
+    /// No variables in the model: nothing to optimize
     ModelEmpty = 6,
+    /// There is no solution to the problem
     PrimalInfeasible = 7,
+    /// The problem is unbounded: there is no single optimal value
     PrimalUnbounded = 8,
+    /// An optimal solution was found
     Optimal = 9,
+    /// reached limit
     ReachedDualObjectiveValueUpperBound = 10,
+    /// reached limit
     ReachedTimeLimit = 11,
+    /// reached limit
     ReachedIterationLimit = 12,
+    /// cannot solve dual
     PrimalDualInfeasible = 13,
+    /// cannot solve dual
     DualInfeasible = 14,
 }
 
+/// This error should never happen: an unexpected status was returned
 #[derive(PartialEq, Clone, Copy)]
 pub struct InvalidStatus(pub c_int);
 
@@ -64,10 +81,14 @@ impl TryFrom<c_int> for HighsModelStatus {
     }
 }
 
+/// The status of a highs operation
 #[derive(Clone, Copy, Debug, PartialOrd, PartialEq, Ord, Eq)]
 pub enum HighsStatus {
+    /// Success
     OK = 0,
+    /// Done, with warning
     Warning = 1,
+    /// An error occurred
     Error = 2,
 }
 
