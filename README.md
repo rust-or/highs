@@ -1,4 +1,7 @@
 # highs
+
+[![highs docs badge](https://docs.rs/highs/badge.svg)](https://docs.rs/highs)
+
 Safe rust bindings to the Highs MILP Solver.
 
 ## Usage example
