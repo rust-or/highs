@@ -6,6 +6,7 @@ use std::os::raw::c_int;
 use highs_sys::*;
 
 pub use status::{HighsModelStatus, HighsStatus};
+use std::borrow::Borrow;
 
 mod status;
 
@@ -53,7 +54,12 @@ impl Problem {
     /// Add a column (a variable) to the problem.
     /// col_factor represents the factor in front of the variable in the objective function.
     /// The row_factors argument defines how much this variable weights in each constraint.
-    pub fn add_column<N: Into<f64> + Copy, B: RangeBounds<N>, I: IntoIterator<Item=(Row, f64)>>(
+    pub fn add_column<
+        N: Into<f64> + Copy,
+        B: RangeBounds<N>,
+        ITEM: Borrow<(Row, f64)>,
+        I: IntoIterator<Item=ITEM>
+    >(
         &mut self,
         col_factor: f64,
         bounds: B,
@@ -65,7 +71,12 @@ impl Problem {
         self.collower.push(low);
         self.colupper.push(high);
         self.astart.push(self.aindex.len().try_into().unwrap());
-        for (row, factor) in row_factors.into_iter() {
+        let iter = row_factors.into_iter();
+        let (size, _) = iter.size_hint();
+        self.aindex.reserve(size);
+        self.avalue.reserve(size);
+        for r in iter {
+            let &(row, factor) = r.borrow();
             self.aindex.push(row.0);
             self.avalue.push(factor);
         }
@@ -294,9 +305,9 @@ mod tests {
         let c1 = pb.add_row(..6.);
         let c2 = pb.add_row(..7.);
         // x
-        pb.add_column(1., 0.., vec![(c1, 3.)]);
+        pb.add_column(1., 0.., &[(c1, 3.)]);
         // y
-        pb.add_column(2., 0.., vec![(c1, 1.), (c2, 1.)]);
+        pb.add_column(2., 0.., &[(c1, 1.), (c2, 1.)]);
         // z
         pb.add_column(1., 0.., vec![(c2, 2.)]);
         let mut model = Model::default();
