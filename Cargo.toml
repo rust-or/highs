@@ -1,10 +1,11 @@
 [package]
 name = "highs"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Ophir LOJKINE", "rust-or"]
 edition = "2018"
 description = "Safe rust bindings for the HiGHS linear programming solver. See http://highs.dev."
 license-file = "LICENSE"
+license = "MIT"
 repository = "https://github.com/rust-or/highs"
 keywords = ["linear-programming", "optimization", "math", "solver"]
 

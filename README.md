@@ -2,44 +2,43 @@
 
 [![highs docs badge](https://docs.rs/highs/badge.svg)](https://docs.rs/highs)
 
-Safe rust bindings to the Highs MILP Solver.
+Safe rust bindings to the Highs MILP Solver. Best used from the [**good_lp**](https://crates.io/crates/good_lp) linear
+programming modeler.
 
-## Usage example
+## Usage examples
+
+#### Building a problem variable by variable
 
 ```rust
+use highs::{ColProblem, Sense};
 
 fn main() {
-    // max: x + 2y + z
-    // under constraints:
-    // c1: 3x +  y      <= 6
-    // c2:       y + 2z <= 7
-    let mut pb = Problem::default();
-    let c1 = pb.add_row(..6.);
-    let c2 = pb.add_row(..7.);
-    // x
-    pb.add_column(
-        1., // the coefficient in front of x in the objective function
-        0.., // x is in the range 0, +∞ 
-        &[ // Giving a slice, but anything that can be iterated over will do
-            (c1, 3.) // The coefficient in front of x in the c1 constraint
-        ]
-    );
-    // y
-    pb.add_column(2., 0.., vec![(c1, 1.), (c2, 1.)]);
-    // z
-    pb.add_column(1., 0.., vec![(c2, 2.)]);
-    let mut model = Model::default();
-    model.set_problem(pb);
-    model.set_sense(Sense::Maximise);
+    let mut pb = ColProblem::new();
+    // We cannot use more then 5 units of sugar in total.
+    let sugar = pb.add_row(..=5);
+    // We cannot use more then 3 units of milk in total.
+    let milk = pb.add_row(..=3);
+    // We have a first cake that we can sell for 2€. Baking it requires 1 unit of milk and 2 of sugar.
+    pb.add_column(2., 0.., &[(sugar, 2.), (milk, 1.)]);
+    // We have a second cake that we can sell for 8€. Baking it requires 2 units of milk and 3 of sugar.
+    pb.add_column(8., 0.., &[(sugar, 3.), (milk, 2.)]);
+    // Find the maximal possible profit
+    let solution = pb.optimise(Sense::Maximise).solve().get_solution();
+    // The solution is to bake only 1.5 portions of the second cake
+    assert_eq!(solution.columns(), vec![0., 1.5]);
+}
+```
 
-    let solved = model.solve();
+#### Building a problem constraint by constraint
 
-    assert_eq!(solved.status(), HighsModelStatus::Optimal);
+```rust
+use highs::*;
 
-    let solution = solved.get_solution();
-    // The expected solution is x=0  y=6  z=0.5
-    assert_eq!(solution.columns(), vec![0., 6., 0.5]);
-    // All the constraints are at their maximum
-    assert_eq!(solution.rows(), vec![6., 7.]);
+fn main() {
+    let mut pb = RowProblem::new();
+    // Optimize 3x - 2y with x<=6 and y>=5
+    let x = pb.add_column(3., ..6);
+    let y = pb.add_column(-2., 5..);
+    pb.add_row(2.., &[(x, 3.), (y, 8.)]); // 2 <= x*3 + y*8
 }
 ```
