@@ -3,7 +3,7 @@
 //!
 //! ## Usage example
 //!
-//! ### Building a problem constraint by constraint
+//! ### Building a problem constraint by constraint with [RowProblem]
 //!
 //! Useful for traditional problem modelling where you first declare your variables, then add
 //!constraints one by one.
@@ -36,10 +36,12 @@
 //! assert_eq!(solution.rows(), vec![6., 7.]);
 //! ```
 //!
-//! ### Building a problem variable by variable
+//! ### Building a problem variable by variable with [ColProblem]
 //!
 //! Useful for resource allocation problems and other problems when you know in advance the number
 //! of constraints and their bounds, but dynamically add new variables to the problem.
+//!
+//! This is slightly more efficient than building the problem constraint by constraint.
 //!
 //! ```
 //! use highs::{ColProblem, Sense};
@@ -155,6 +157,8 @@ where
     }
 
     /// Create a model based on this problem. Don't solve it yet.
+    /// If the problem is a [RowProblem], it will have to be converted to a [ColProblem] first,
+    /// which takes an amount of time proportional to the size of the problem.
     pub fn optimise(self, sense: Sense) -> Model {
         let mut m = Model::new(self);
         m.set_sense(sense);
@@ -209,6 +213,8 @@ impl Model {
     }
 
     /// Create a Highs model to be optimized (but don't solve it yet).
+    /// If the given problem is a [RowProblem], it will have to be converted to a [ColProblem] first,
+    /// which takes an amount of time proportional to the size of the problem.
     pub fn new<P: Into<Problem<ColMatrix>>>(problem: P) -> Self {
         let mut highs = HighsPtr::default();
         let problem = problem.into();
