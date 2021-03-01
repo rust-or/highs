@@ -76,8 +76,8 @@ impl From<RowMatrix> for ColMatrix {
         let mut aindex = Vec::with_capacity(size);
         let mut avalue = Vec::with_capacity(size);
         for (row_indices, factors) in m.columns {
-            aindex.extend(row_indices);
-            avalue.extend(factors);
+            aindex.extend_from_slice(&row_indices);
+            avalue.extend_from_slice(&factors);
             astart.push(aindex.len().try_into().unwrap());
         }
         ColMatrix {
