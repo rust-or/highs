@@ -20,9 +20,7 @@ pub enum HighsModelStatus {
     /// No variables in the model: nothing to optimize
     /// ```
     /// use highs::*;
-    /// let mut model = Model::default();
-    /// model.set_problem(Problem::<ColMatrix>::default());
-    /// let solved = model.solve();
+    /// let solved = ColProblem::new().optimise(Sense::Maximise).solve();
     /// assert_eq!(solved.status(), HighsModelStatus::ModelEmpty);
     /// ```
     ModelEmpty = 6,

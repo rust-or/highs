@@ -33,14 +33,16 @@ impl Problem<ColMatrix> {
         N: Into<f64> + Copy,
         B: RangeBounds<N>,
         ITEM: Borrow<(Row, f64)>,
-        I: IntoIterator<Item=ITEM>
+        I: IntoIterator<Item = ITEM>,
     >(
         &mut self,
         col_factor: f64,
         bounds: B,
         row_factors: I,
     ) {
-        self.matrix.astart.push(self.matrix.aindex.len().try_into().unwrap());
+        self.matrix
+            .astart
+            .push(self.matrix.aindex.len().try_into().unwrap());
         let iter = row_factors.into_iter();
         let (size, _) = iter.size_hint();
         self.matrix.aindex.reserve(size);
@@ -53,4 +55,3 @@ impl Problem<ColMatrix> {
         self.add_column_inner(col_factor, bounds);
     }
 }
-

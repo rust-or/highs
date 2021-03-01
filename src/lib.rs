@@ -23,11 +23,7 @@
 //! // c2
 //! pb.add_row(..=7, &[(y, 1.), (z, 2.)]);
 //!
-//! let mut model = Model::default();
-//! model.set_problem(pb);
-//! model.set_sense(Sense::Maximise);
-//!
-//! let solved = model.solve();
+//! let solved = pb.optimise(Sense::Maximise).solve();
 //!
 //! assert_eq!(solved.status(), HighsModelStatus::Optimal);
 //!
@@ -58,11 +54,7 @@
 //! // z
 //! pb.add_column(1., 0.., vec![(c2, 2.)]);
 //!
-//! let mut model = Model::default();
-//! model.set_problem(pb);
-//! model.set_sense(Sense::Maximise);
-//!
-//! let solved = model.solve();
+//! let solved = pb.optimise(Sense::Maximise).solve();
 //!
 //! assert_eq!(solved.status(), HighsModelStatus::Optimal);
 //!
@@ -88,9 +80,9 @@ pub type RowProblem = Problem<RowMatrix>;
 /// A problem where constraints are declared first, and variables are then added dynamically.
 pub type ColProblem = Problem<ColMatrix>;
 
-mod status;
-mod matrix_row;
 mod matrix_col;
+mod matrix_row;
+mod status;
 
 /// A complete optimization problem
 /// Depending on the MATRIX type parameter, the problem will be built
@@ -108,7 +100,10 @@ pub struct Problem<MATRIX = ColMatrix> {
     matrix: MATRIX,
 }
 
-impl<MATRIX> Problem<MATRIX> {
+impl<MATRIX: Default> Problem<MATRIX>
+where
+    Problem<ColMatrix>: From<Problem<MATRIX>>,
+{
     fn num_cols(&self) -> usize {
         self.colcost.len()
     }
@@ -125,10 +120,7 @@ impl<MATRIX> Problem<MATRIX> {
         r
     }
 
-    fn add_column_inner<
-        N: Into<f64> + Copy,
-        B: RangeBounds<N>,
-    >(
+    fn add_column_inner<N: Into<f64> + Copy, B: RangeBounds<N>>(
         &mut self,
         col_factor: f64,
         bounds: B,
@@ -138,6 +130,18 @@ impl<MATRIX> Problem<MATRIX> {
         let high = bound_value(bounds.end_bound()).unwrap_or(f64::INFINITY);
         self.collower.push(low);
         self.colupper.push(high);
+    }
+
+    /// Create a model based on this problem. Don't solve it yet.
+    pub fn optimise(self, sense: Sense) -> Model {
+        let mut m = Model::new(self);
+        m.set_sense(sense);
+        m
+    }
+
+    /// Create a new problem instance
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -153,9 +157,8 @@ fn c(n: usize) -> c_int {
     n.try_into().unwrap()
 }
 
-
 /// A model to solve
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Model {
     highs: HighsPtr,
 }
@@ -177,20 +180,15 @@ pub enum Sense {
 }
 
 impl Model {
-    /// Create a Highs model to be optimized (but don't solve it yet).
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Set the optimization sense (minimize by default)
     pub fn set_sense(&mut self, sense: Sense) {
-        unsafe {
-            Highs_changeObjectiveSense(self.highs.mut_ptr(), sense as c_int);
-        }
+        let ret = unsafe { Highs_changeObjectiveSense(self.highs.mut_ptr(), sense as c_int) };
+        assert_eq!(ret, 1, "changeObjectiveSense failed");
     }
 
-    /// Set the problem to optimize
-    pub fn set_problem<P: Into<Problem<ColMatrix>>>(&mut self, problem: P) {
+    /// Create a Highs model to be optimized (but don't solve it yet).
+    pub fn new<P: Into<Problem<ColMatrix>>>(problem: P) -> Self {
+        let mut highs = HighsPtr::default();
         let problem = problem.into();
         log::debug!(
             "Adding a problem with {} variables and {} constraints to HiGHS",
@@ -199,7 +197,7 @@ impl Model {
         );
         unsafe {
             handle_status(Highs_passLp(
-                self.highs.mut_ptr(),
+                highs.mut_ptr(),
                 c(problem.num_cols()),
                 c(problem.num_rows()),
                 c(problem.matrix.avalue.len()),
@@ -213,6 +211,7 @@ impl Model {
                 problem.matrix.avalue.as_ptr(),
             ));
         }
+        Model { highs }
     }
 
     /// Prevents writing anything to the standard output when solving the model

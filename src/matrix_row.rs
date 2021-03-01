@@ -21,10 +21,11 @@ pub struct RowMatrix {
 
 impl Problem<RowMatrix> {
     /// add a variable to the problem
-    pub fn add_column<
-        N: Into<f64> + Copy,
-        B: RangeBounds<N>,
-    >(&mut self, col_factor: f64, bounds: B) -> Col {
+    pub fn add_column<N: Into<f64> + Copy, B: RangeBounds<N>>(
+        &mut self,
+        col_factor: f64,
+        bounds: B,
+    ) -> Col {
         let col = Col(self.num_cols());
         self.add_column_inner(col_factor, bounds);
         self.matrix.columns.push((vec![], vec![]));
@@ -36,7 +37,7 @@ impl Problem<RowMatrix> {
         N: Into<f64> + Copy,
         B: RangeBounds<N>,
         ITEM: Borrow<(Col, f64)>,
-        I: IntoIterator<Item=ITEM>
+        I: IntoIterator<Item = ITEM>,
     >(
         &mut self,
         bounds: B,
@@ -71,6 +72,53 @@ impl From<RowMatrix> for ColMatrix {
             avalue,
         }
     }
+}
+
+#[test]
+fn test_conversion() {
+    use crate::status::HighsModelStatus::Optimal;
+    use crate::{ColProblem, Model, RowProblem, Sense};
+    let inf = f64::INFINITY;
+    let neg_inf = f64::NEG_INFINITY;
+    let mut p = RowProblem::default();
+    let x = p.add_column(1., -1..2);
+    let y = p.add_column(9., 4f64..inf);
+    p.add_row(-999f64..inf, &[(x, 666.), (y, 777.)]);
+    p.add_row(neg_inf..8880f64, &[(y, 888.)]);
+    assert_eq!(
+        p,
+        RowProblem {
+            colcost: vec![1., 9.],
+            collower: vec![-1., 4.],
+            colupper: vec![2., inf],
+            rowlower: vec![-999., neg_inf],
+            rowupper: vec![inf, 8880.],
+            matrix: RowMatrix {
+                columns: vec![(vec![0], vec![666.]), (vec![0, 1], vec![777., 888.]),],
+            },
+        }
+    );
+    let colpb = ColProblem::from(p.clone());
+    assert_eq!(
+        colpb,
+        ColProblem {
+            colcost: vec![1., 9.],
+            collower: vec![-1., 4.],
+            colupper: vec![2., inf],
+            rowlower: vec![-999., neg_inf],
+            rowupper: vec![inf, 8880.],
+            matrix: ColMatrix {
+                astart: vec![0, 1, 3],
+                aindex: vec![0, 0, 1],
+                avalue: vec![666., 777., 888.],
+            },
+        }
+    );
+    let mut m = Model::new(p);
+    m.set_sense(Sense::Maximise);
+    let solved = m.solve();
+    assert_eq!(solved.status(), Optimal);
+    assert_eq!(solved.get_solution().columns(), &[2., 10.]);
 }
 
 impl From<Problem<RowMatrix>> for Problem<ColMatrix> {
