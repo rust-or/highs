@@ -21,7 +21,7 @@ pub enum HighsModelStatus {
     /// ```
     /// use highs::*;
     /// let mut model = Model::default();
-    /// model.set_problem(Problem::default());
+    /// model.set_problem(Problem::<ColMatrix>::default());
     /// let solved = model.solve();
     /// assert_eq!(solved.status(), HighsModelStatus::ModelEmpty);
     /// ```
