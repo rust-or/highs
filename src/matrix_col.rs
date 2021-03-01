@@ -19,21 +19,33 @@ pub struct ColMatrix {
     pub(crate) avalue: Vec<f64>,
 }
 
+/// To use these functions, you need to first add all your constraints, and then add variables
+/// one by one using the [Row] objects.
 impl Problem<ColMatrix> {
     /// Add a row (a constraint) to the problem.
-    /// The concrete factors are added later, when adding columns
+    /// The concrete factors are added later, when creating columns.
     pub fn add_row<N: Into<f64> + Copy, B: RangeBounds<N>>(&mut self, bounds: B) -> Row {
         self.add_row_inner(bounds)
     }
 
-    /// Add a column (a variable) to the problem.
-    /// col_factor represents the factor in front of the variable in the objective function.
-    /// The row_factors argument defines how much this variable weights in each constraint.
+    /// Add a variable to the problem.
+    ///  - `col_factor` represents the factor in front of the variable in the objective function.
+    ///  - `bounds` represents the maximal and minimal allowed values of the variable.
+    ///  - `row_factors` defines how much this variable weights in each constraint.
+    ///
+    /// ```
+    /// use highs::{ColProblem, Sense};
+    /// let mut pb = ColProblem::new();
+    /// let constraint = pb.add_row(..=5); // adds a constraint that cannot take a value over 5
+    /// // add a variable that has a coefficient 2 in the objective function, is >=0, and has a coefficient
+    /// // 2 in the constraint
+    /// pb.add_column(2., 0.., &[(constraint, 2.)]);
+    /// ```
     pub fn add_column<
         N: Into<f64> + Copy,
         B: RangeBounds<N>,
         ITEM: Borrow<(Row, f64)>,
-        I: IntoIterator<Item = ITEM>,
+        I: IntoIterator<Item=ITEM>,
     >(
         &mut self,
         col_factor: f64,

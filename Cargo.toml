@@ -1,6 +1,6 @@
 [package]
 name = "highs"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Ophir LOJKINE", "rust-or"]
 edition = "2018"
 description = "Safe rust bindings for the HiGHS linear programming solver. See http://highs.dev."

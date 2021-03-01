@@ -15,12 +15,14 @@
 //! // c1: 3x +  y      <= 6
 //! // c2:       y + 2z <= 7
 //! let mut pb = RowProblem::default();
+//! // Create a variable named x, with a coefficient of 1 in the objective function,
+//! // that is bound between 0 and +∞.
 //! let x = pb.add_column(1., 0..);
 //! let y = pb.add_column(2., 0..);
 //! let z = pb.add_column(1., 0..);
-//! // c1
+//! // constraint c1: x*3 + y*1 is bound to ]-∞; 6]
 //! pb.add_row(..=6, &[(x, 3.), (y, 1.)]);
-//! // c2
+//! // constraint c2: y*1 +  z*2 is bound to ]-∞; 7]
 //! pb.add_row(..=7, &[(y, 1.), (z, 2.)]);
 //!
 //! let solved = pb.optimise(Sense::Maximise).solve();
@@ -38,6 +40,24 @@
 //!
 //! Useful for resource allocation problems and other problems when you know in advance the number
 //! of constraints and their bounds, but dynamically add new variables to the problem.
+//!
+//! ```
+//! use highs::{ColProblem, Sense};
+//! let mut pb = ColProblem::new();
+//! // We cannot use more then 5 units of sugar in total.
+//! let sugar = pb.add_row(..=5);
+//! // We cannot use more then 3 units of milk in total.
+//! let milk = pb.add_row(..=3);
+//! // We have a first cake that we can sell for 2€. Baking it requires 1 unit of milk and 2 of sugar.
+//! pb.add_column(2., 0.., &[(sugar, 2.), (milk, 1.)]);
+//! // We have a second cake that we can sell for 8€. Baking it requires 2 units of milk and 3 of sugar.
+//! pb.add_column(8., 0.., &[(sugar, 3.), (milk, 2.)]);
+//! // Find the maximal possible profit
+//! let solution = pb.optimise(Sense::Maximise).solve().get_solution();
+//! // The solution is to bake only 1.5 portions of the second cake
+//! assert_eq!(solution.columns(), vec![0.,1.5]);
+//! ```
+//!
 //! ```
 //! use highs::{Sense, Model, HighsModelStatus, ColProblem};
 //! // max: x + 2y + z
@@ -76,18 +96,20 @@ pub use matrix_row::{Col, RowMatrix};
 pub use status::{HighsModelStatus, HighsStatus};
 
 /// A problem where variables are declared first, and constraints are then added dynamically.
+/// See [`Problem<RowMatrix>`](Problem#impl-1).
 pub type RowProblem = Problem<RowMatrix>;
 /// A problem where constraints are declared first, and variables are then added dynamically.
+/// See [`Problem<ColMatrix>`](Problem#impl).
 pub type ColProblem = Problem<ColMatrix>;
 
 mod matrix_col;
 mod matrix_row;
 mod status;
 
-/// A complete optimization problem
-/// Depending on the MATRIX type parameter, the problem will be built
-/// constraint by constraint (with MATRIX=RowMatrix), or
-/// variable by variable (with MATRIX=ColMatrix)
+/// A complete optimization problem.
+/// Depending on the `MATRIX` type parameter, the problem will be built
+/// constraint by constraint (with [ColProblem]), or
+/// variable by variable (with [RowProblem])
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Problem<MATRIX = ColMatrix> {
     // columns

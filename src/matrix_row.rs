@@ -19,8 +19,11 @@ pub struct RowMatrix {
     columns: Vec<(Vec<c_int>, Vec<f64>)>,
 }
 
+/// Functions to use when first declaring variables, then constraints.
 impl Problem<RowMatrix> {
-    /// add a variable to the problem
+    /// add a variable to the problem.
+    ///  - `col_factor` is the coefficient in front of the variable in the objective function.
+    ///  - `bounds` are the maximal and minimal values that the variable can take.
     pub fn add_column<N: Into<f64> + Copy, B: RangeBounds<N>>(
         &mut self,
         col_factor: f64,
@@ -32,7 +35,18 @@ impl Problem<RowMatrix> {
         col
     }
 
-    /// add a constraint to the problem
+    /// Add a constraint to the problem.
+    ///  - `bounds` are the maximal and minimal allowed values for the linear expression in the constraint
+    ///  - `row_factors` are the coefficients in the linear expression expressing the constraint
+    ///
+    /// ```
+    /// use highs::*;
+    /// let mut pb = RowProblem::new();
+    /// // Optimize 3x - 2y with x<=6 and y>=5
+    /// let x = pb.add_column(3., ..6);
+    /// let y = pb.add_column(-2., 5..);
+    /// pb.add_row(2.., &[(x, 3.), (y, 8.)]); // 2 <= x*3 + y*8
+    /// ```
     pub fn add_row<
         N: Into<f64> + Copy,
         B: RangeBounds<N>,
