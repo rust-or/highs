@@ -1,4 +1,4 @@
-use std::ffi::{c_void, CString};
+use std::ffi::{c_void, CString, CStr};
 use std::os::raw::{c_char, c_int};
 
 pub trait HighsOptionValue {
@@ -23,10 +23,15 @@ impl HighsOptionValue for f64 {
     }
 }
 
+impl<'a> HighsOptionValue for &'a CStr {
+    unsafe fn set_option(self, highs: *mut c_void, option: *const c_char) -> c_int {
+        highs_sys::Highs_setHighsStringOptionValue(highs, option, self.as_ptr())
+    }
+}
+
 impl<'a> HighsOptionValue for &'a [u8] {
     unsafe fn set_option(self, highs: *mut c_void, option: *const c_char) -> c_int {
-        let c_str = CString::new(self).expect("invalid highs option value");
-        highs_sys::Highs_setHighsStringOptionValue(highs, option, c_str.as_ptr())
+        CString::new(self).expect("invalid highs option value").set_option(highs, option)
     }
 }
 
