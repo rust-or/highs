@@ -45,7 +45,7 @@ impl Problem<ColMatrix> {
         N: Into<f64> + Copy,
         B: RangeBounds<N>,
         ITEM: Borrow<(Row, f64)>,
-        I: IntoIterator<Item=ITEM>,
+        I: IntoIterator<Item = ITEM>,
     >(
         &mut self,
         col_factor: f64,

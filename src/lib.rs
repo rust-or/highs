@@ -87,12 +87,13 @@
 //! assert_eq!(solution.rows(), vec![6., 7.]);
 //! ```
 use std::convert::{TryFrom, TryInto};
-use std::ffi::c_void;
+use std::ffi::{c_void, CString};
 use std::ops::{Bound, RangeBounds};
 use std::os::raw::c_int;
 
 use highs_sys::*;
 
+use crate::options::HighsOptionValue;
 pub use matrix_col::{ColMatrix, Row};
 pub use matrix_row::{Col, RowMatrix};
 pub use status::{HighsModelStatus, HighsStatus};
@@ -106,6 +107,7 @@ pub type ColProblem = Problem<ColMatrix>;
 
 mod matrix_col;
 mod matrix_row;
+mod options;
 mod status;
 
 /// A complete optimization problem.
@@ -247,6 +249,25 @@ impl Model {
         handle_status(unsafe { Highs_runQuiet(self.highs.mut_ptr()) })
     }
 
+    /// Set a custom parameter on the model.
+    /// For the list of available options and their documentation, see:
+    /// https://www.maths.ed.ac.uk/hall/HiGHS/HighsOptions.html
+    ///
+    /// ```
+    /// # use highs::ColProblem;
+    /// # use highs::Sense::Maximise;
+    /// let mut model = ColProblem::default().optimise(Maximise);
+    /// model.set_option("presolve", "off"); // disable the presolver
+    /// model.set_option("solver", "ipm"); // use the ipm solver
+    /// model.set_option("time_limit", 30.0); // stop after 30 seconds
+    /// model.set_option("parallel", "on"); // use multiple cores
+    /// model.set_option("highs_min_threads", 4); // solve on 4 threads minimum
+    /// ```
+    pub fn set_option<STR: Into<Vec<u8>>, V: HighsOptionValue>(&mut self, option: STR, value: V) {
+        let c_str = CString::new(option).expect("invalid option name");
+        handle_status(unsafe { value.set_option(self.highs.mut_ptr(), c_str.as_ptr()) });
+    }
+
     /// Find the optimal value for the problem
     pub fn solve(mut self) -> SolvedModel {
         unsafe {
@@ -379,9 +400,7 @@ fn handle_status(status: c_int) {
             log::warn!("Warning from HiGHS !");
         }
         HighsStatus::Error => {
-            panic!(
-                "An error was encountered in HiGHS. This is probably a memory allocation error."
-            );
+            panic!("An error was encountered in HiGHS.");
         }
     }
 }
