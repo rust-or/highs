@@ -101,7 +101,7 @@ impl TryFrom<c_int> for HighsStatus {
     type Error = InvalidStatus;
 
     fn try_from(value: c_int) -> Result<Self, InvalidStatus> {
-        use highs_sys::*;
+        use highs_sys::{STATUS_ERROR, STATUS_OK, STATUS_WARNING};
         match value {
             STATUS_OK => Ok(Self::OK),
             STATUS_WARNING => Ok(Self::Warning),

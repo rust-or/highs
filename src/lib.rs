@@ -175,8 +175,7 @@ where
 
 fn bound_value<N: Into<f64> + Copy>(b: Bound<&N>) -> Option<f64> {
     match b {
-        Bound::Included(v) => Some((*v).into()),
-        Bound::Excluded(v) => Some((*v).into()),
+        Bound::Included(v) | Bound::Excluded(v) => Some((*v).into()),
         Bound::Unbounded => None,
     }
 }
@@ -241,7 +240,7 @@ impl Model {
                 problem.matrix.avalue.as_ptr(),
             ));
         }
-        Model { highs }
+        Self { highs }
     }
 
     /// Prevents writing anything to the standard output when solving the model
@@ -251,7 +250,7 @@ impl Model {
 
     /// Set a custom parameter on the model.
     /// For the list of available options and their documentation, see:
-    /// https://www.maths.ed.ac.uk/hall/HiGHS/HighsOptions.html
+    /// <https://www.maths.ed.ac.uk/hall/HiGHS/HighsOptions.html/>
     ///
     /// ```
     /// # use highs::ColProblem;
@@ -296,14 +295,14 @@ impl Drop for HighsPtr {
 
 impl Default for HighsPtr {
     fn default() -> Self {
-        HighsPtr(unsafe { Highs_create() })
+        Self(unsafe { Highs_create() })
     }
 }
 
 impl HighsPtr {
     // To be used instead of unsafe_mut_ptr wherever possible
     #[allow(dead_code)]
-    fn ptr(&self) -> *const c_void {
+    const fn ptr(&self) -> *const c_void {
         self.0
     }
 
