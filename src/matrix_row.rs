@@ -69,7 +69,7 @@ impl Problem<RowMatrix> {
 }
 
 impl From<RowMatrix> for ColMatrix {
-    fn from(m: RowMatrix) -> ColMatrix {
+    fn from(m: RowMatrix) -> Self {
         let mut astart = Vec::with_capacity(m.columns.len());
         astart.push(0);
         let size: usize = m.columns.iter().map(|(v, _)| v.len()).sum();
@@ -80,7 +80,7 @@ impl From<RowMatrix> for ColMatrix {
             avalue.extend_from_slice(&factors);
             astart.push(aindex.len().try_into().unwrap());
         }
-        ColMatrix {
+        Self {
             astart,
             aindex,
             avalue,
@@ -88,6 +88,8 @@ impl From<RowMatrix> for ColMatrix {
     }
 }
 
+
+#[allow(clippy::float_cmp)]
 #[test]
 fn test_conversion() {
     use crate::status::HighsModelStatus::Optimal;
@@ -137,7 +139,7 @@ fn test_conversion() {
 
 impl From<Problem<RowMatrix>> for Problem<ColMatrix> {
     fn from(pb: Problem<RowMatrix>) -> Problem<ColMatrix> {
-        Problem {
+        Self {
             colcost: pb.colcost,
             collower: pb.collower,
             colupper: pb.colupper,
