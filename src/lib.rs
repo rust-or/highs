@@ -130,10 +130,13 @@ impl<MATRIX: Default> Problem<MATRIX>
 where
     Problem<ColMatrix>: From<Problem<MATRIX>>,
 {
-    fn num_cols(&self) -> usize {
+    /// Number of variables in the problem
+    pub fn num_cols(&self) -> usize {
         self.colcost.len()
     }
-    fn num_rows(&self) -> usize {
+
+    /// Number of constraints in the problem
+    pub fn num_rows(&self) -> usize {
         self.rowlower.len()
     }
 
