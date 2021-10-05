@@ -131,6 +131,7 @@ fn test_conversion() {
         }
     );
     let mut m = Model::new(p);
+    m.make_quiet();
     m.set_sense(Sense::Maximise);
     let solved = m.solve();
     assert_eq!(solved.status(), Optimal);

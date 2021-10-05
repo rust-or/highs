@@ -168,6 +168,7 @@ where
     pub fn optimise(self, sense: Sense) -> Model {
         let mut m = Model::new(self);
         m.set_sense(sense);
+        m.make_quiet();
         m
     }
 
@@ -251,9 +252,11 @@ impl Model {
         Self { highs }
     }
 
-    /// Prevents writing anything to the standard output when solving the model
+    /// Prevents writing anything to the standard output or to files when solving the model
     pub fn make_quiet(&mut self) {
-        handle_status(unsafe { Highs_runQuiet(self.highs.mut_ptr()) })
+        self.set_option(&b"log_file"[..], "");
+        self.set_option(&b"output_flag"[..], false);
+        self.set_option(&b"log_to_console"[..], false);
     }
 
     /// Set a custom parameter on the model.

@@ -7,25 +7,25 @@ pub trait HighsOptionValue {
 
 impl HighsOptionValue for bool {
     unsafe fn set_option(self, highs: *mut c_void, option: *const c_char) -> c_int {
-        highs_sys::Highs_setHighsBoolOptionValue(highs, option, if self { 1 } else { 0 })
+        highs_sys::Highs_setBoolOptionValue(highs, option, if self { 1 } else { 0 })
     }
 }
 
 impl HighsOptionValue for i32 {
     unsafe fn set_option(self, highs: *mut c_void, option: *const c_char) -> c_int {
-        highs_sys::Highs_setHighsIntOptionValue(highs, option, self)
+        highs_sys::Highs_setIntOptionValue(highs, option, self)
     }
 }
 
 impl HighsOptionValue for f64 {
     unsafe fn set_option(self, highs: *mut c_void, option: *const c_char) -> c_int {
-        highs_sys::Highs_setHighsDoubleOptionValue(highs, option, self)
+        highs_sys::Highs_setDoubleOptionValue(highs, option, self)
     }
 }
 
 impl<'a> HighsOptionValue for &'a CStr {
     unsafe fn set_option(self, highs: *mut c_void, option: *const c_char) -> c_int {
-        highs_sys::Highs_setHighsStringOptionValue(highs, option, self.as_ptr())
+        highs_sys::Highs_setStringOptionValue(highs, option, self.as_ptr())
     }
 }
 
