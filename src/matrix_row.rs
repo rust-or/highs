@@ -57,7 +57,7 @@ impl Problem<RowMatrix> {
         bounds: B,
         row_factors: I,
     ) {
-        let num_rows: c_int = self.num_rows().try_into().unwrap();
+        let num_rows: c_int = self.num_rows().try_into().expect("too many rows");
         for r in row_factors {
             let &(col, factor) = r.borrow();
             let c = &mut self.matrix.columns[col.0];
@@ -78,7 +78,7 @@ impl From<RowMatrix> for ColMatrix {
         for (row_indices, factors) in m.columns {
             aindex.extend_from_slice(&row_indices);
             avalue.extend_from_slice(&factors);
-            astart.push(aindex.len().try_into().unwrap());
+            astart.push(aindex.len().try_into().expect("invalid matrix size"));
         }
         Self {
             astart,

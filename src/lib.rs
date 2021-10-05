@@ -142,7 +142,7 @@ where
     }
 
     fn add_row_inner<N: Into<f64> + Copy, B: RangeBounds<N>>(&mut self, bounds: B) -> Row {
-        let r = Row(self.num_rows().try_into().unwrap());
+        let r = Row(self.num_rows().try_into().expect("too many rows"));
         let low = bound_value(bounds.start_bound()).unwrap_or(f64::NEG_INFINITY);
         let high = bound_value(bounds.end_bound()).unwrap_or(f64::INFINITY);
         self.rowlower.push(low);
@@ -184,8 +184,8 @@ fn bound_value<N: Into<f64> + Copy>(b: Bound<&N>) -> Option<f64> {
     }
 }
 
-fn c(n: usize) -> c_int {
-    n.try_into().unwrap()
+fn c(n: usize) -> HighsInt {
+    n.try_into().expect("size too large for HiGHS")
 }
 
 /// A model to solve
@@ -362,13 +362,13 @@ impl SolvedModel {
     /// Number of variables
     fn num_cols(&self) -> usize {
         let n = unsafe { Highs_getNumCols(self.highs.unsafe_mut_ptr()) };
-        n.try_into().unwrap()
+        n.try_into().expect("invalid number of columns")
     }
 
     /// Number of constraints
     fn num_rows(&self) -> usize {
         let n = unsafe { Highs_getNumRows(self.highs.unsafe_mut_ptr()) };
-        n.try_into().unwrap()
+        n.try_into().expect("invalid number of rows")
     }
 }
 
