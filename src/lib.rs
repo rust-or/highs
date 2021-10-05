@@ -93,10 +93,11 @@ use std::os::raw::c_int;
 
 use highs_sys::*;
 
-use crate::options::HighsOptionValue;
 pub use matrix_col::{ColMatrix, Row};
 pub use matrix_row::{Col, RowMatrix};
 pub use status::{HighsModelStatus, HighsStatus};
+
+use crate::options::HighsOptionValue;
 
 /// A problem where variables are declared first, and constraints are then added dynamically.
 /// See [`Problem<RowMatrix>`](Problem#impl-1).
@@ -204,16 +205,16 @@ pub struct SolvedModel {
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum Sense {
     /// max
-    Maximise = -1,
+    Maximise = OBJECTIVE_SENSE_MAXIMIZE as isize,
     /// min
-    Minimise = 1,
+    Minimise = OBJECTIVE_SENSE_MINIMIZE as isize,
 }
 
 impl Model {
     /// Set the optimization sense (minimize by default)
     pub fn set_sense(&mut self, sense: Sense) {
         let ret = unsafe { Highs_changeObjectiveSense(self.highs.mut_ptr(), sense as c_int) };
-        assert_eq!(ret, 1, "changeObjectiveSense failed");
+        assert_eq!(ret, STATUS_OK, "changeObjectiveSense failed");
     }
 
     /// Create a Highs model to be optimized (but don't solve it yet).
@@ -227,12 +228,16 @@ impl Model {
             problem.num_cols(),
             problem.num_rows()
         );
+        let offset = 0.0;
         unsafe {
             handle_status(Highs_passLp(
                 highs.mut_ptr(),
                 c(problem.num_cols()),
                 c(problem.num_rows()),
                 c(problem.matrix.avalue.len()),
+                MATRIX_FORMAT_COLUMN_WISE,
+                OBJECTIVE_SENSE_MINIMIZE,
+                offset,
                 problem.colcost.as_ptr(),
                 problem.collower.as_ptr(),
                 problem.colupper.as_ptr(),
@@ -322,7 +327,7 @@ impl HighsPtr {
 impl SolvedModel {
     /// The status of the solution. Should be Optimal if everything went well
     pub fn status(&self) -> HighsModelStatus {
-        let model_status = unsafe { Highs_getModelStatus(self.highs.unsafe_mut_ptr(), 0) };
+        let model_status = unsafe { Highs_getModelStatus(self.highs.unsafe_mut_ptr()) };
         HighsModelStatus::try_from(model_status).unwrap()
     }
 
@@ -396,7 +401,10 @@ impl Solution {
 }
 
 fn handle_status(status: c_int) {
-    match HighsStatus::try_from(status).unwrap() {
+    let status_enum =
+        HighsStatus::try_from(status)
+            .expect("HiGHS returned an unexpected status value. Please report it as a bug to https://github.com/rust-or/highs/issues");
+    match status_enum {
         HighsStatus::OK => {}
         HighsStatus::Warning => {
             log::warn!("Warning from HiGHS !");

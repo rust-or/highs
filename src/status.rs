@@ -2,44 +2,48 @@ use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
 use std::os::raw::c_int;
 
+use highs_sys::*;
+
 /// The kinds of results of an optimization
 #[derive(Clone, Copy, Debug, PartialOrd, PartialEq, Ord, Eq)]
 pub enum HighsModelStatus {
     /// not initialized
-    NotSet = 0,
+    NotSet = MODEL_STATUS_NOTSET as isize,
     /// Unable to load model
-    LoadError = 1,
+    LoadError = MODEL_STATUS_LOAD_ERROR as isize,
     /// invalid model
-    ModelError = 2,
+    ModelError = MODEL_STATUS_MODEL_ERROR as isize,
     /// Unable to run the pre-solve phase
-    PresolveError = 3,
+    PresolveError = MODEL_STATUS_PRESOLVE_ERROR as isize,
     /// Unable to solve
-    SolveError = 4,
+    SolveError = MODEL_STATUS_SOLVE_ERROR as isize,
     /// Unable to clean after solve
-    PostsolveError = 5,
+    PostsolveError = MODEL_STATUS_POSTSOLVE_ERROR as isize,
     /// No variables in the model: nothing to optimize
     /// ```
     /// use highs::*;
     /// let solved = ColProblem::new().optimise(Sense::Maximise).solve();
     /// assert_eq!(solved.status(), HighsModelStatus::ModelEmpty);
     /// ```
-    ModelEmpty = 6,
+    ModelEmpty = MODEL_STATUS_MODEL_EMPTY as isize,
     /// There is no solution to the problem
-    PrimalInfeasible = 7,
+    Infeasible = MODEL_STATUS_INFEASIBLE as isize,
+    /// The problem in unbounded or infeasible
+    UnboundedOrInfeasible = MODEL_STATUS_UNBOUNDED_OR_INFEASIBLE as isize,
     /// The problem is unbounded: there is no single optimal value
-    PrimalUnbounded = 8,
+    Unbounded = MODEL_STATUS_UNBOUNDED as isize,
     /// An optimal solution was found
-    Optimal = 9,
+    Optimal = MODEL_STATUS_OPTIMAL as isize,
+    /// objective bound
+    ObjectiveBound = MODEL_STATUS_OBJECTIVE_BOUND as isize,
+    /// objective target
+    ObjectiveTarget = MODEL_STATUS_OBJECTIVE_TARGET as isize,
     /// reached limit
-    ReachedDualObjectiveValueUpperBound = 10,
+    ReachedTimeLimit = MODEL_STATUS_REACHED_TIME_LIMIT as isize,
     /// reached limit
-    ReachedTimeLimit = 11,
-    /// reached limit
-    ReachedIterationLimit = 12,
-    /// cannot solve dual
-    PrimalDualInfeasible = 13,
-    /// cannot solve dual
-    DualInfeasible = 14,
+    ReachedIterationLimit = MODEL_STATUS_REACHED_ITERATION_LIMIT as isize,
+    /// Unknown model status
+    Unknown = MODEL_STATUS_UNKNOWN as isize,
 }
 
 /// This error should never happen: an unexpected status was returned
@@ -71,16 +75,15 @@ impl TryFrom<c_int> for HighsModelStatus {
             MODEL_STATUS_SOLVE_ERROR => Ok(Self::SolveError),
             MODEL_STATUS_POSTSOLVE_ERROR => Ok(Self::PostsolveError),
             MODEL_STATUS_MODEL_EMPTY => Ok(Self::ModelEmpty),
-            MODEL_STATUS_PRIMAL_INFEASIBLE => Ok(Self::PrimalInfeasible),
-            MODEL_STATUS_PRIMAL_UNBOUNDED => Ok(Self::PrimalUnbounded),
+            MODEL_STATUS_INFEASIBLE => Ok(Self::Infeasible),
+            MODEL_STATUS_UNBOUNDED => Ok(Self::Unbounded),
+            MODEL_STATUS_UNBOUNDED_OR_INFEASIBLE => Ok(Self::UnboundedOrInfeasible),
             MODEL_STATUS_OPTIMAL => Ok(Self::Optimal),
-            MODEL_STATUS_REACHED_DUAL_OBJECTIVE_VALUE_UPPER_BOUND => {
-                Ok(Self::ReachedDualObjectiveValueUpperBound)
-            }
+            MODEL_STATUS_OBJECTIVE_BOUND => Ok(Self::ObjectiveBound),
+            MODEL_STATUS_OBJECTIVE_TARGET => Ok(Self::ObjectiveTarget),
             MODEL_STATUS_REACHED_TIME_LIMIT => Ok(Self::ReachedTimeLimit),
             MODEL_STATUS_REACHED_ITERATION_LIMIT => Ok(Self::ReachedIterationLimit),
-            MODEL_STATUS_PRIMAL_DUAL_INFEASIBLE => Ok(Self::PrimalDualInfeasible),
-            MODEL_STATUS_DUAL_INFEASIBLE => Ok(Self::DualInfeasible),
+            MODEL_STATUS_UNKNOWN => Ok(Self::Unknown),
             n => Err(InvalidStatus(n)),
         }
     }
@@ -101,7 +104,6 @@ impl TryFrom<c_int> for HighsStatus {
     type Error = InvalidStatus;
 
     fn try_from(value: c_int) -> Result<Self, InvalidStatus> {
-        use highs_sys::{STATUS_ERROR, STATUS_OK, STATUS_WARNING};
         match value {
             STATUS_OK => Ok(Self::OK),
             STATUS_WARNING => Ok(Self::Warning),
