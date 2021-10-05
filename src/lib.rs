@@ -275,7 +275,7 @@ impl Model {
     /// ```
     pub fn set_option<STR: Into<Vec<u8>>, V: HighsOptionValue>(&mut self, option: STR, value: V) {
         let c_str = CString::new(option).expect("invalid option name");
-        handle_status(unsafe { value.set_option(self.highs.mut_ptr(), c_str.as_ptr()) });
+        handle_status(unsafe { value.apply_to_highs(self.highs.mut_ptr(), c_str.as_ptr()) });
     }
 
     /// Find the optimal value for the problem
