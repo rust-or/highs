@@ -165,11 +165,19 @@ where
     /// Create a model based on this problem. Don't solve it yet.
     /// If the problem is a [RowProblem], it will have to be converted to a [ColProblem] first,
     /// which takes an amount of time proportional to the size of the problem.
+    /// If the problem is invalid (according to HiGHS), this function will panic.
     pub fn optimise(self, sense: Sense) -> Model {
-        let mut m = Model::new(self);
+        self.try_optimise(sense).expect("invalid problem")
+    }
+
+    /// Create a model based on this problem. Don't solve it yet.
+    /// If the problem is a [RowProblem], it will have to be converted to a [ColProblem] first,
+    /// which takes an amount of time proportional to the size of the problem.
+    pub fn try_optimise(self, sense: Sense) -> Result<Model, HighsStatus> {
+        let mut m = Model::try_new(self)?;
         m.set_sense(sense);
         m.make_quiet();
-        m
+        Ok(m)
     }
 
     /// Create a new problem instance
@@ -221,7 +229,16 @@ impl Model {
     /// Create a Highs model to be optimized (but don't solve it yet).
     /// If the given problem is a [RowProblem], it will have to be converted to a [ColProblem] first,
     /// which takes an amount of time proportional to the size of the problem.
+    /// Panics if the problem is incoherent
     pub fn new<P: Into<Problem<ColMatrix>>>(problem: P) -> Self {
+        Self::try_new(problem).expect("incoherent problem")
+    }
+
+    /// Create a Highs model to be optimized (but don't solve it yet).
+    /// If the given problem is a [RowProblem], it will have to be converted to a [ColProblem] first,
+    /// which takes an amount of time proportional to the size of the problem.
+    /// Returns an error if the problem is incoherent
+    pub fn try_new<P: Into<Problem<ColMatrix>>>(problem: P) -> Result<Self, HighsStatus> {
         let mut highs = HighsPtr::default();
         let problem = problem.into();
         log::debug!(
@@ -231,7 +248,7 @@ impl Model {
         );
         let offset = 0.0;
         unsafe {
-            handle_status(Highs_passLp(
+            try_handle_status(Highs_passLp(
                 highs.mut_ptr(),
                 c(problem.num_cols()),
                 c(problem.num_rows()),
@@ -247,9 +264,9 @@ impl Model {
                 problem.matrix.astart.as_ptr(),
                 problem.matrix.aindex.as_ptr(),
                 problem.matrix.avalue.as_ptr(),
-            ));
+            ))
+            .map(|_| Self { highs })
         }
-        Self { highs }
     }
 
     /// Prevents writing anything to the standard output or to files when solving the model
@@ -278,12 +295,15 @@ impl Model {
         handle_status(unsafe { value.apply_to_highs(self.highs.mut_ptr(), c_str.as_ptr()) });
     }
 
-    /// Find the optimal value for the problem
-    pub fn solve(mut self) -> SolvedModel {
-        unsafe {
-            handle_status(Highs_run(self.highs.mut_ptr()));
-        }
-        SolvedModel { highs: self.highs }
+    /// Find the optimal value for the problem, panic if the problem is incoherent
+    pub fn solve(self) -> SolvedModel {
+        self.try_solve().expect("HiGHS error: invalid problem")
+    }
+
+    /// Find the optimal value for the problem, return an error if the problem is incoherent
+    pub fn try_solve(mut self) -> Result<SolvedModel, HighsStatus> {
+        unsafe { try_handle_status(Highs_run(self.highs.mut_ptr())) }
+            .map(|_| SolvedModel { highs: self.highs })
     }
 }
 
@@ -404,16 +424,18 @@ impl Solution {
 }
 
 fn handle_status(status: c_int) {
-    let status_enum =
-        HighsStatus::try_from(status)
-            .expect("HiGHS returned an unexpected status value. Please report it as a bug to https://github.com/rust-or/highs/issues");
+    match try_handle_status(status) {
+        Ok(_) => (),
+        Err(HighsStatus::Warning) => log::warn!("Warning from HiGHS !"),
+        Err(_) => panic!("An error was encountered in HiGHS."),
+    }
+}
+
+fn try_handle_status(status: c_int) -> Result<HighsStatus, HighsStatus> {
+    let status_enum = HighsStatus::try_from(status)
+                .expect("HiGHS returned an unexpected status value. Please report it as a bug to https://github.com/rust-or/highs/issues");
     match status_enum {
-        HighsStatus::OK => {}
-        HighsStatus::Warning => {
-            log::warn!("Warning from HiGHS !");
-        }
-        HighsStatus::Error => {
-            panic!("An error was encountered in HiGHS.");
-        }
+        status @ HighsStatus::OK => Ok(status),
+        error => Err(error),
     }
 }
