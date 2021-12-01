@@ -176,7 +176,6 @@ where
     pub fn try_optimise(self, sense: Sense) -> Result<Model, HighsStatus> {
         let mut m = Model::try_new(self)?;
         m.set_sense(sense);
-        m.make_quiet();
         Ok(m)
     }
 
@@ -240,6 +239,7 @@ impl Model {
     /// Returns an error if the problem is incoherent
     pub fn try_new<P: Into<Problem<ColMatrix>>>(problem: P) -> Result<Self, HighsStatus> {
         let mut highs = HighsPtr::default();
+        highs.make_quiet();
         let problem = problem.into();
         log::debug!(
             "Adding a problem with {} variables and {} constraints to HiGHS",
@@ -271,9 +271,7 @@ impl Model {
 
     /// Prevents writing anything to the standard output or to files when solving the model
     pub fn make_quiet(&mut self) {
-        self.set_option(&b"log_file"[..], "");
-        self.set_option(&b"output_flag"[..], false);
-        self.set_option(&b"log_to_console"[..], false);
+        self.highs.make_quiet()
     }
 
     /// Set a custom parameter on the model.
@@ -291,8 +289,7 @@ impl Model {
     /// model.set_option("highs_min_threads", 4); // solve on 4 threads minimum
     /// ```
     pub fn set_option<STR: Into<Vec<u8>>, V: HighsOptionValue>(&mut self, option: STR, value: V) {
-        let c_str = CString::new(option).expect("invalid option name");
-        handle_status(unsafe { value.apply_to_highs(self.highs.mut_ptr(), c_str.as_ptr()) });
+        self.highs.set_option(option, value)
     }
 
     /// Find the optimal value for the problem, panic if the problem is incoherent
@@ -344,6 +341,19 @@ impl HighsPtr {
 
     fn mut_ptr(&mut self) -> *mut c_void {
         self.0
+    }
+
+    /// Prevents writing anything to the standard output or to files when solving the model
+    pub fn make_quiet(&mut self) {
+        self.set_option(&b"log_file"[..], "");
+        self.set_option(&b"output_flag"[..], false);
+        self.set_option(&b"log_to_console"[..], false);
+    }
+
+    /// Set a custom parameter on the model
+    pub fn set_option<STR: Into<Vec<u8>>, V: HighsOptionValue>(&mut self, option: STR, value: V) {
+        let c_str = CString::new(option).expect("invalid option name");
+        handle_status(unsafe { value.apply_to_highs(self.mut_ptr(), c_str.as_ptr()) });
     }
 }
 
