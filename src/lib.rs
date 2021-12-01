@@ -345,7 +345,6 @@ impl HighsPtr {
 
     /// Prevents writing anything to the standard output or to files when solving the model
     pub fn make_quiet(&mut self) {
-        self.set_option(&b"log_file"[..], "");
         self.set_option(&b"output_flag"[..], false);
         self.set_option(&b"log_to_console"[..], false);
     }
