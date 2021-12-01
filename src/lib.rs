@@ -343,8 +343,11 @@ impl HighsPtr {
         self.0
     }
 
-    /// Prevents writing anything to the standard output or to files when solving the model
+    /// Prevents writing anything to the standard output when solving the model
     pub fn make_quiet(&mut self) {
+        // setting log_file seems to cause a double free in Highs. 
+        // See https://github.com/rust-or/highs/issues/3
+        // self.set_option(&b"log_file"[..], "");
         self.set_option(&b"output_flag"[..], false);
         self.set_option(&b"log_to_console"[..], false);
     }
