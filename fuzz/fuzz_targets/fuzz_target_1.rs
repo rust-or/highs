@@ -9,6 +9,7 @@ use std::ops::Range;
 struct ColData {
     val: f64,
     range: Range<f64>,
+    integrality: bool,
 }
 
 fn test(u: &mut Unstructured) -> arbitrary::Result<()> {
@@ -17,7 +18,7 @@ fn test(u: &mut Unstructured) -> arbitrary::Result<()> {
         .arbitrary_iter::<ColData>()?
         .map(|cd| {
             let cd = cd?;
-            Ok(pb.add_column(cd.val, cd.range))
+            Ok(pb.add_column_with_integrality(cd.val, cd.range, cd.integrality))
         })
         .collect::<Result<Vec<_>, _>>()?;
 
