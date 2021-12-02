@@ -51,13 +51,13 @@
 //! // We cannot use more then 3 units of milk in total.
 //! let milk = pb.add_row(..=3);
 //! // We have a first cake that we can sell for 2€. Baking it requires 1 unit of milk and 2 of sugar.
-//! pb.add_column(2., 0.., &[(sugar, 2.), (milk, 1.)]);
+//! pb.add_integer_column(2., 0.., &[(sugar, 2.), (milk, 1.)]);
 //! // We have a second cake that we can sell for 8€. Baking it requires 2 units of milk and 3 of sugar.
-//! pb.add_column(8., 0.., &[(sugar, 3.), (milk, 2.)]);
+//! pb.add_integer_column(8., 0.., &[(sugar, 3.), (milk, 2.)]);
 //! // Find the maximal possible profit
 //! let solution = pb.optimise(Sense::Maximise).solve().get_solution();
-//! // The solution is to bake only 1.5 portions of the second cake
-//! assert_eq!(solution.columns(), vec![0.,1.5]);
+//! // The solution is to bake 1 cake of each sort
+//! assert_eq!(solution.columns(), vec![1., 1.]);
 //! ```
 //!
 //! ```
@@ -86,6 +86,28 @@
 //! // All the constraints are at their maximum
 //! assert_eq!(solution.rows(), vec![6., 7.]);
 //! ```
+//! 
+//! ### Integer variables
+//! 
+//! HiGHS supports mixed integer-linear programming.
+//! You can use `add_integer_column` to add an integer variable to the problem,
+//! and the solution is then guaranteed to contain a whole number as a value for this variable.
+//! 
+//! ```
+//! use highs::{Sense, Model, HighsModelStatus, ColProblem};
+//! // maximize: x + 2y under constraints x + y <= 3.5 and x - y >= 1
+//! let mut pb = ColProblem::default();
+//! let c1 = pb.add_row(..3.5);
+//! let c2 = pb.add_row(1..);
+//! // x (continuous variable)
+//! pb.add_column(1., 0.., &[(c1, 1.), (c2, 1.)]);
+//! // y (integer variable)
+//! pb.add_integer_column(2., 0.., &[(c1, 1.), (c2, -1.)]);
+//! let solved = pb.optimise(Sense::Maximise).solve();
+//! // The expected solution is x=2.5  y=1
+//! assert_eq!(solved.get_solution().columns(), vec![2.5, 1.]);
+//! ```
+
 use std::convert::{TryFrom, TryInto};
 use std::ffi::{c_void, CString};
 use std::ops::{Bound, RangeBounds};
@@ -124,6 +146,7 @@ pub struct Problem<MATRIX = ColMatrix> {
     // rows
     rowlower: Vec<f64>,
     rowupper: Vec<f64>,
+    integrality: Option<Vec<HighsInt>>,
     matrix: MATRIX,
 }
 
@@ -154,7 +177,14 @@ where
         &mut self,
         col_factor: f64,
         bounds: B,
+        is_integral: bool,
     ) {
+        if is_integral && self.integrality.is_none() {
+            self.integrality = Some(vec![0; self.num_cols()]);
+        }
+        if let Some(integrality) = &mut self.integrality {
+            integrality.push(if is_integral { 1 } else { 0 });
+        }
         self.colcost.push(col_factor);
         let low = bound_value(bounds.start_bound()).unwrap_or(f64::NEG_INFINITY);
         let high = bound_value(bounds.end_bound()).unwrap_or(f64::INFINITY);
@@ -248,23 +278,44 @@ impl Model {
         );
         let offset = 0.0;
         unsafe {
-            try_handle_status(Highs_passLp(
-                highs.mut_ptr(),
-                c(problem.num_cols()),
-                c(problem.num_rows()),
-                c(problem.matrix.avalue.len()),
-                MATRIX_FORMAT_COLUMN_WISE,
-                OBJECTIVE_SENSE_MINIMIZE,
-                offset,
-                problem.colcost.as_ptr(),
-                problem.collower.as_ptr(),
-                problem.colupper.as_ptr(),
-                problem.rowlower.as_ptr(),
-                problem.rowupper.as_ptr(),
-                problem.matrix.astart.as_ptr(),
-                problem.matrix.aindex.as_ptr(),
-                problem.matrix.avalue.as_ptr(),
-            ))
+            try_handle_status(if let Some(integrality) = &problem.integrality {
+                Highs_passMip(
+                    highs.mut_ptr(),
+                    c(problem.num_cols()),
+                    c(problem.num_rows()),
+                    c(problem.matrix.avalue.len()),
+                    MATRIX_FORMAT_COLUMN_WISE,
+                    OBJECTIVE_SENSE_MINIMIZE,
+                    offset,
+                    problem.colcost.as_ptr(),
+                    problem.collower.as_ptr(),
+                    problem.colupper.as_ptr(),
+                    problem.rowlower.as_ptr(),
+                    problem.rowupper.as_ptr(),
+                    problem.matrix.astart.as_ptr(),
+                    problem.matrix.aindex.as_ptr(),
+                    problem.matrix.avalue.as_ptr(),
+                    integrality.as_ptr(),
+                )
+            } else {
+                Highs_passLp(
+                    highs.mut_ptr(),
+                    c(problem.num_cols()),
+                    c(problem.num_rows()),
+                    c(problem.matrix.avalue.len()),
+                    MATRIX_FORMAT_COLUMN_WISE,
+                    OBJECTIVE_SENSE_MINIMIZE,
+                    offset,
+                    problem.colcost.as_ptr(),
+                    problem.collower.as_ptr(),
+                    problem.colupper.as_ptr(),
+                    problem.rowlower.as_ptr(),
+                    problem.rowupper.as_ptr(),
+                    problem.matrix.astart.as_ptr(),
+                    problem.matrix.aindex.as_ptr(),
+                    problem.matrix.avalue.as_ptr(),
+                )
+            })
             .map(|_| Self { highs })
         }
     }
@@ -345,7 +396,7 @@ impl HighsPtr {
 
     /// Prevents writing anything to the standard output when solving the model
     pub fn make_quiet(&mut self) {
-        // setting log_file seems to cause a double free in Highs. 
+        // setting log_file seems to cause a double free in Highs.
         // See https://github.com/rust-or/highs/issues/3
         // self.set_option(&b"log_file"[..], "");
         self.set_option(&b"output_flag"[..], false);

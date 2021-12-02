@@ -29,8 +29,28 @@ impl Problem<RowMatrix> {
         col_factor: f64,
         bounds: B,
     ) -> Col {
+        self.add_column_with_integrality(col_factor, bounds, false)
+    }
+
+    /// Same as add_column, but forces the solution to contain an integer value for this variable.
+    pub fn add_integer_column<N: Into<f64> + Copy, B: RangeBounds<N>>(
+        &mut self,
+        col_factor: f64,
+        bounds: B,
+    ) -> Col {
+        self.add_column_with_integrality(col_factor, bounds, true)
+    }
+
+    /// Same as add_column, but lets you define whether the new variable should be integral or continuous.
+    #[inline]
+    pub fn add_column_with_integrality<N: Into<f64> + Copy, B: RangeBounds<N>>(
+        &mut self,
+        col_factor: f64,
+        bounds: B,
+        is_integer: bool,
+    ) -> Col {
         let col = Col(self.num_cols());
-        self.add_column_inner(col_factor, bounds);
+        self.add_column_inner(col_factor, bounds, is_integer);
         self.matrix.columns.push((vec![], vec![]));
         col
     }
@@ -88,7 +108,6 @@ impl From<RowMatrix> for ColMatrix {
     }
 }
 
-
 #[allow(clippy::float_cmp)]
 #[test]
 fn test_conversion() {
@@ -97,8 +116,8 @@ fn test_conversion() {
     let inf = f64::INFINITY;
     let neg_inf = f64::NEG_INFINITY;
     let mut p = RowProblem::default();
-    let x = p.add_column(1., -1..2);
-    let y = p.add_column(9., 4f64..inf);
+    let x: Col = p.add_column(1., -1..2);
+    let y: Col = p.add_column(9., 4f64..inf);
     p.add_row(-999f64..inf, &[(x, 666.), (y, 777.)]);
     p.add_row(neg_inf..8880f64, &[(y, 888.)]);
     assert_eq!(
@@ -109,6 +128,7 @@ fn test_conversion() {
             colupper: vec![2., inf],
             rowlower: vec![-999., neg_inf],
             rowupper: vec![inf, 8880.],
+            integrality: None,
             matrix: RowMatrix {
                 columns: vec![(vec![0], vec![666.]), (vec![0, 1], vec![777., 888.]),],
             },
@@ -123,6 +143,7 @@ fn test_conversion() {
             colupper: vec![2., inf],
             rowlower: vec![-999., neg_inf],
             rowupper: vec![inf, 8880.],
+            integrality: None,
             matrix: ColMatrix {
                 astart: vec![0, 1, 3],
                 aindex: vec![0, 0, 1],
@@ -146,6 +167,7 @@ impl From<Problem<RowMatrix>> for Problem<ColMatrix> {
             colupper: pb.colupper,
             rowlower: pb.rowlower,
             rowupper: pb.rowupper,
+            integrality: pb.integrality,
             matrix: pb.matrix.into(),
         }
     }

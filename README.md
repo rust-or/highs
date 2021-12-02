@@ -19,13 +19,13 @@ fn main() {
     // We cannot use more then 3 units of milk in total.
     let milk = pb.add_row(..=3);
     // We have a first cake that we can sell for 2€. Baking it requires 1 unit of milk and 2 of sugar.
-    pb.add_column(2., 0.., &[(sugar, 2.), (milk, 1.)]);
+    pb.add_integer_column(2., 0.., &[(sugar, 2.), (milk, 1.)]);
     // We have a second cake that we can sell for 8€. Baking it requires 2 units of milk and 3 of sugar.
-    pb.add_column(8., 0.., &[(sugar, 3.), (milk, 2.)]);
+    pb.add_integer_column(8., 0.., &[(sugar, 3.), (milk, 2.)]);
     // Find the maximal possible profit
     let solution = pb.optimise(Sense::Maximise).solve().get_solution();
-    // The solution is to bake only 1.5 portions of the second cake
-    assert_eq!(solution.columns(), vec![0., 1.5]);
+    // The solution is to bake one cake of each sort
+    assert_eq!(solution.columns(), vec![1., 1.]);
 }
 ```
 
