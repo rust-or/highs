@@ -40,9 +40,7 @@ fn test(u: &mut Unstructured) -> arbitrary::Result<()> {
         .and_then(|p| p.try_solve())
     {
         let solution = solved.get_solution();
-        // The expected solution is x=0  y=6  z=0.5
         assert_eq!(solution.columns().len(), vars.len());
-        // All the constraints are at their maximum
         assert_eq!(solution.rows().len(), num_rows);
     }
     Ok(())
