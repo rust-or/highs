@@ -337,7 +337,7 @@ impl Model {
     /// model.set_option("solver", "ipm"); // use the ipm solver
     /// model.set_option("time_limit", 30.0); // stop after 30 seconds
     /// model.set_option("parallel", "on"); // use multiple cores
-    /// model.set_option("highs_min_threads", 4); // solve on 4 threads minimum
+    /// model.set_option("threads", 4); // solve on 4 threads
     /// ```
     pub fn set_option<STR: Into<Vec<u8>>, V: HighsOptionValue>(&mut self, option: STR, value: V) {
         self.highs.set_option(option, value)
