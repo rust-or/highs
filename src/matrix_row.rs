@@ -71,7 +71,7 @@ impl Problem<RowMatrix> {
         N: Into<f64> + Copy,
         B: RangeBounds<N>,
         ITEM: Borrow<(Col, f64)>,
-        I: IntoIterator<Item = ITEM>,
+        I: IntoIterator<Item=ITEM>,
     >(
         &mut self,
         bounds: B,
@@ -130,7 +130,7 @@ fn test_conversion() {
             rowupper: vec![inf, 8880.],
             integrality: None,
             matrix: RowMatrix {
-                columns: vec![(vec![0], vec![666.]), (vec![0, 1], vec![777., 888.]),],
+                columns: vec![(vec![0], vec![666.]), (vec![0, 1], vec![777., 888.])],
             },
         }
     );

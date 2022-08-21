@@ -151,8 +151,8 @@ pub struct Problem<MATRIX = ColMatrix> {
 }
 
 impl<MATRIX: Default> Problem<MATRIX>
-where
-    Problem<ColMatrix>: From<Problem<MATRIX>>,
+    where
+        Problem<ColMatrix>: From<Problem<MATRIX>>,
 {
     /// Number of variables in the problem
     pub fn num_cols(&self) -> usize {
@@ -226,6 +226,15 @@ fn c(n: usize) -> HighsInt {
     n.try_into().expect("size too large for HiGHS")
 }
 
+macro_rules! highs_call {
+    ($function_name:ident ($($param:expr),+)) => {
+        try_handle_status(
+            $function_name($($param),+),
+            stringify!($function_name)
+        )
+    }
+}
+
 /// A model to solve
 #[derive(Debug)]
 pub struct Model {
@@ -278,8 +287,8 @@ impl Model {
         );
         let offset = 0.0;
         unsafe {
-            try_handle_status(if let Some(integrality) = &problem.integrality {
-                Highs_passMip(
+            if let Some(integrality) = &problem.integrality {
+                highs_call!(Highs_passMip(
                     highs.mut_ptr(),
                     c(problem.num_cols()),
                     c(problem.num_rows()),
@@ -295,10 +304,10 @@ impl Model {
                     problem.matrix.astart.as_ptr(),
                     problem.matrix.aindex.as_ptr(),
                     problem.matrix.avalue.as_ptr(),
-                    integrality.as_ptr(),
-                )
+                    integrality.as_ptr()
+                ))
             } else {
-                Highs_passLp(
+                highs_call!(Highs_passLp(
                     highs.mut_ptr(),
                     c(problem.num_cols()),
                     c(problem.num_rows()),
@@ -313,10 +322,9 @@ impl Model {
                     problem.rowupper.as_ptr(),
                     problem.matrix.astart.as_ptr(),
                     problem.matrix.aindex.as_ptr(),
-                    problem.matrix.avalue.as_ptr(),
-                )
-            })
-            .map(|_| Self { highs })
+                    problem.matrix.avalue.as_ptr()
+                ))
+            }.map(|_| Self { highs })
         }
     }
 
@@ -350,7 +358,7 @@ impl Model {
 
     /// Find the optimal value for the problem, return an error if the problem is incoherent
     pub fn try_solve(mut self) -> Result<SolvedModel, HighsStatus> {
-        unsafe { try_handle_status(Highs_run(self.highs.mut_ptr())) }
+        unsafe { highs_call!(Highs_run(self.highs.mut_ptr())) }
             .map(|_| SolvedModel { highs: self.highs })
     }
 }
@@ -406,7 +414,9 @@ impl HighsPtr {
     /// Set a custom parameter on the model
     pub fn set_option<STR: Into<Vec<u8>>, V: HighsOptionValue>(&mut self, option: STR, value: V) {
         let c_str = CString::new(option).expect("invalid option name");
-        handle_status(unsafe { value.apply_to_highs(self.mut_ptr(), c_str.as_ptr()) });
+        let status = unsafe { value.apply_to_highs(self.mut_ptr(), c_str.as_ptr()) };
+        try_handle_status(status, "Highs_setOptionValue")
+            .expect("An error was encountered in HiGHS.");
     }
 }
 
@@ -486,19 +496,56 @@ impl Solution {
     }
 }
 
-fn handle_status(status: c_int) {
-    match try_handle_status(status) {
-        Ok(_) => (),
-        Err(HighsStatus::Warning) => log::warn!("Warning from HiGHS !"),
-        Err(_) => panic!("An error was encountered in HiGHS."),
-    }
-}
-
-fn try_handle_status(status: c_int) -> Result<HighsStatus, HighsStatus> {
+fn try_handle_status(status: c_int, msg: &str) -> Result<HighsStatus, HighsStatus> {
     let status_enum = HighsStatus::try_from(status)
-                .expect("HiGHS returned an unexpected status value. Please report it as a bug to https://github.com/rust-or/highs/issues");
+        .expect("HiGHS returned an unexpected status value. Please report it as a bug to https://github.com/rust-or/highs/issues");
     match status_enum {
         status @ HighsStatus::OK => Ok(status),
+        status @ HighsStatus::Warning => {
+            log::warn!("HiGHS emitted a warning: {}", msg);
+            Ok(status)
+        }
         error => Err(error),
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn test_coefs(coefs: [f64; 2]) {
+        // See: https://github.com/rust-or/highs/issues/5
+        let mut problem = RowProblem::new();
+        // Minimize x + y subject to x ≥ 0, y ≥ 0.
+        let x = problem.add_column(1., -1..);
+        let y = problem.add_column(1., 0..);
+        problem.add_row(..1, [x, y].iter().copied().zip(coefs)); // 1 ≥ x + c y.
+        let solution = problem.optimise(Sense::Minimise).solve().get_solution();
+        assert_eq!([-1., 0.], solution.columns());
+    }
+
+    #[test]
+    fn test_single_zero_coef() {
+        test_coefs([1.0, 0.0]);
+        test_coefs([0.0, 1.0]);
+    }
+
+    #[test]
+    fn test_all_zero_coefs() {
+        test_coefs([0.0, 0.0])
+    }
+
+    #[test]
+    fn test_no_zero_coefs() {
+        test_coefs([1.0, 1.0])
+    }
+
+    #[test]
+    fn test_infeasible_empty_row() {
+        let mut problem = RowProblem::new();
+        let row_factors: &[(Col, f64)] = &[];
+        problem.add_row(2..3, row_factors);
+        let _ = problem.optimise(Sense::Minimise).try_solve();
+    }
+}
+
