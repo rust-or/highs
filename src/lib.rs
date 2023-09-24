@@ -86,13 +86,13 @@
 //! // All the constraints are at their maximum
 //! assert_eq!(solution.rows(), vec![6., 7.]);
 //! ```
-//! 
+//!
 //! ### Integer variables
-//! 
+//!
 //! HiGHS supports mixed integer-linear programming.
 //! You can use `add_integer_column` to add an integer variable to the problem,
 //! and the solution is then guaranteed to contain a whole number as a value for this variable.
-//! 
+//!
 //! ```
 //! use highs::{Sense, Model, HighsModelStatus, ColProblem};
 //! // maximize: x + 2y under constraints x + y <= 3.5 and x - y >= 1
@@ -110,7 +110,7 @@
 
 use std::convert::{TryFrom, TryInto};
 use std::ffi::{c_void, CString};
-use std::ops::{Bound, RangeBounds};
+use std::ops::{Bound, RangeBounds, Index};
 use std::os::raw::c_int;
 
 use highs_sys::*;
@@ -151,8 +151,8 @@ pub struct Problem<MATRIX = ColMatrix> {
 }
 
 impl<MATRIX: Default> Problem<MATRIX>
-    where
-        Problem<ColMatrix>: From<Problem<MATRIX>>,
+where
+    Problem<ColMatrix>: From<Problem<MATRIX>>,
 {
     /// Number of variables in the problem
     pub fn num_cols(&self) -> usize {
@@ -324,7 +324,8 @@ impl Model {
                     problem.matrix.aindex.as_ptr(),
                     problem.matrix.avalue.as_ptr()
                 ))
-            }.map(|_| Self { highs })
+            }
+            .map(|_| Self { highs })
         }
     }
 
@@ -496,6 +497,13 @@ impl Solution {
     }
 }
 
+impl Index<Col> for Solution {
+    type Output = f64;
+    fn index(&self, col: Col) -> &f64 {
+        &self.colvalue[col.0]
+    }
+}
+
 fn try_handle_status(status: c_int, msg: &str) -> Result<HighsStatus, HighsStatus> {
     let status_enum = HighsStatus::try_from(status)
         .expect("HiGHS returned an unexpected status value. Please report it as a bug to https://github.com/rust-or/highs/issues");
@@ -548,4 +556,3 @@ mod test {
         let _ = problem.optimise(Sense::Minimise).try_solve();
     }
 }
-

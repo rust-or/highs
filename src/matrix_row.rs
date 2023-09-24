@@ -9,7 +9,7 @@ use crate::Problem;
 
 /// Represents a variable
 #[derive(Debug, Clone, Copy)]
-pub struct Col(usize);
+pub struct Col(pub(crate) usize);
 
 /// A complete optimization problem stored by row
 #[derive(Debug, Clone, PartialEq, Default)]
