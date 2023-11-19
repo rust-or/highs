@@ -362,6 +362,79 @@ impl Model {
         unsafe { highs_call!(Highs_run(self.highs.mut_ptr())) }
             .map(|_| SolvedModel { highs: self.highs })
     }
+
+    /// Adds a new constraint to the highs model.
+    pub fn add_row(
+        mut self,
+        bounds: impl RangeBounds<f64>,
+        row_factors: impl IntoIterator<Item = (Col, f64)>,
+    ) -> Self {
+        self.try_add_row(bounds, row_factors)
+            .unwrap_or_else(|e| panic!("HiGHS error: {:?}", e));
+        self
+    }
+
+
+    /// Tries to add a new constraint to the highs model.
+    ///
+    /// Returns the status of the model after adding the row.
+    pub fn try_add_row(
+        &mut self,
+        bounds: impl RangeBounds<f64>,
+        row_factors: impl IntoIterator<Item = (Col, f64)>,
+    ) -> Result<HighsStatus, HighsStatus> {
+        let (cols, factors): (Vec<_>, Vec<_>) = row_factors.into_iter().unzip();
+        unsafe {
+            highs_call!(
+                Highs_addRow(
+                    self.highs.mut_ptr(),
+                    bound_value(bounds.start_bound()).unwrap_or(f64::NEG_INFINITY),
+                    bound_value(bounds.end_bound()).unwrap_or(f64::INFINITY),
+                    cols.len().try_into().unwrap(),
+                    cols.into_iter().map(|c| c.0.try_into().unwrap()).collect::<Vec<_>>().as_ptr(),
+                    factors.as_ptr()
+                )
+           )
+        }
+    }
+
+
+    /// Adds a new variable to the highs model.
+    pub fn add_col(
+        mut self,
+        col_factor: f64,
+        bounds: impl RangeBounds<f64>,
+        row_factors: impl IntoIterator<Item = (Row, f64)>,
+    ) -> Self {
+        self.try_add_column(col_factor, bounds, row_factors)
+            .unwrap_or_else(|e| panic!("HiGHS error: {:?}", e));
+        self
+    }
+
+    /// Tries to add a new variable to the highs model.
+    ///
+    /// Returns the status of the model after adding the column.
+    pub fn try_add_column(
+        &mut self,
+        col_factor: f64,
+        bounds: impl RangeBounds<f64>,
+        row_factors: impl IntoIterator<Item = (Row, f64)>,
+    ) -> Result<HighsStatus, HighsStatus> {
+        let (rows, factors): (Vec<_>, Vec<_>) = row_factors.into_iter().unzip();
+        unsafe {
+            highs_call!(
+                Highs_addCol(
+                    self.highs.mut_ptr(),
+                    col_factor,
+                    bound_value(bounds.start_bound()).unwrap_or(f64::NEG_INFINITY),
+                    bound_value(bounds.end_bound()).unwrap_or(f64::INFINITY),
+                    rows.len().try_into().unwrap(),
+                    rows.into_iter().map(|r| r.0.try_into().unwrap()).collect::<Vec<_>>().as_ptr(),
+                    factors.as_ptr()
+                )
+            )
+        }
+    }
 }
 
 impl From<SolvedModel> for Model {
@@ -554,5 +627,20 @@ mod test {
         let row_factors: &[(Col, f64)] = &[];
         problem.add_row(2..3, row_factors);
         let _ = problem.optimise(Sense::Minimise).try_solve();
+    }
+
+    #[test]
+    fn test_add_row_and_col() {
+        let mut model = Model::new::<Problem<ColMatrix>>(Problem::default())
+            .add_col(1., 1.0.., vec![])
+            .add_row(..1.0, vec![(Col(0), 1.0)]);
+        let solved = model.solve();
+        assert_eq!(solved.status(), HighsModelStatus::Optimal);
+
+        let model = Model::from(solved)
+            .add_col(1., ..1.0, vec![])
+            .add_row(2.0.., vec![(Col(1), 1.0)]);
+        let solved = model.solve();
+        assert_eq!(solved.status(), HighsModelStatus::Infeasible);
     }
 }
