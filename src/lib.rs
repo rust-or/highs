@@ -667,8 +667,8 @@ mod test {
         assert_eq!(solution.columns(), vec![1.0]);
 
         let mut model = Model::from(solved);
-        let col = model.add_col(1., ..1.0, vec![]);
-        model.add_row(2.0.., vec![(Col(1), 1.0)]);
+        let new_col = model.add_col(1., ..1.0, vec![]);
+        model.add_row(2.0.., vec![(new_col, 1.0)]);
         let solved = model.solve();
         assert_eq!(solved.status(), HighsModelStatus::Infeasible);
     }
