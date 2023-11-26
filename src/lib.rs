@@ -644,6 +644,8 @@ mod test {
             .add_row(..1.0, vec![(Col(0), 1.0)]);
         let solved = model.solve();
         assert_eq!(solved.status(), HighsModelStatus::Optimal);
+        let solution = solved.get_solution();
+        assert_eq!(solution.columns(), vec![1.0]);
 
         let model = Model::from(solved)
             .add_col(1., ..1.0, vec![])
