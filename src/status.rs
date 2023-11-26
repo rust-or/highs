@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter};
+use std::num::TryFromIntError;
 use std::os::raw::c_int;
 
 use highs_sys::*;
@@ -98,6 +99,12 @@ pub enum HighsStatus {
     Warning = 1,
     /// An error occurred
     Error = 2,
+}
+
+impl From<TryFromIntError> for HighsStatus {
+    fn from(_: TryFromIntError) -> Self {
+        Self::Error
+    }
 }
 
 impl TryFrom<c_int> for HighsStatus {
