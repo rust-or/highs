@@ -364,6 +364,10 @@ impl Model {
     }
 
     /// Adds a new constraint to the highs model.
+    ///
+    /// # Panics
+    ///
+    /// If HIGHS returns an error status value.
     pub fn add_row(
         mut self,
         bounds: impl RangeBounds<f64>,
@@ -400,6 +404,10 @@ impl Model {
 
 
     /// Adds a new variable to the highs model.
+    ///
+    /// # Panics
+    ///
+    /// If HIGHS returns an error status value.
     pub fn add_col(
         mut self,
         col_factor: f64,
