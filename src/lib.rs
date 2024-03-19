@@ -113,6 +113,7 @@ use std::ffi::{c_void, CString};
 use std::num::TryFromIntError;
 use std::ops::{Bound, RangeBounds, Index};
 use std::os::raw::c_int;
+use std::ptr::null;
 
 use highs_sys::*;
 
@@ -450,6 +451,73 @@ impl Model {
         }?;
 
         Ok(Col(self.highs.num_cols()? - 1))
+    }
+
+    /// Hot-starts at the initial guess. See HIGHS documentation for further details.
+    ///
+    /// # Panics
+    ///
+    /// If HIGHS returns an error status value.
+    ///
+    /// If the data passed in do not have the correct lengths.
+    /// `cols` and `col_duals` should have the lengths of `num_cols`.
+    /// `rows` and `row_duals` should have the lengths of `num_rows`.
+    pub fn set_solution(
+        &mut self,
+        cols: Option<&[f64]>,
+        rows: Option<&[f64]>,
+        col_duals: Option<&[f64]>,
+        row_duals: Option<&[f64]>,
+    ) {
+        self.try_set_solution(cols, rows, col_duals, row_duals)
+            .unwrap_or_else(|e| panic!("HiGHS error: {:?}", e))
+    }
+
+    /// Tries to hot-start using an initial guess by passing the column and row primal and dual solution values.
+    /// See highs_c_api.h for further details.
+    ///
+    /// # Panics
+    ///
+    /// If the data passed in do not have the correct lengths.
+    /// `cols` and `col_duals` should have the lengths of `num_cols`.
+    /// `rows` and `row_duals` should have the lengths of `num_rows`.
+    pub fn try_set_solution(
+        &mut self,
+        cols: Option<&[f64]>,
+        rows: Option<&[f64]>,
+        col_duals: Option<&[f64]>,
+        row_duals: Option<&[f64]>,
+    ) -> Result<(), HighsStatus> {
+        let num_cols = self.highs.num_cols()?;
+        let num_rows = self.highs.num_rows()?;
+        unsafe {
+            highs_call!(Highs_setSolution(
+                self.highs.mut_ptr(),
+                cols.map(|x| {
+                    assert_eq!(x.len(), num_cols);
+                    x.as_ptr()
+                })
+                .unwrap_or(null()),
+                rows.map(|x| {
+                    assert_eq!(x.len(), num_rows);
+                    x.as_ptr()
+                })
+                .unwrap_or(null()),
+                col_duals
+                    .map(|x| {
+                        assert_eq!(x.len(), num_cols);
+                        x.as_ptr()
+                    })
+                    .unwrap_or(null()),
+                row_duals
+                    .map(|x| {
+                        assert_eq!(x.len(), num_rows);
+                        x.as_ptr()
+                    })
+                    .unwrap_or(null())
+            ))
+        }?;
+        Ok(())
     }
 }
 
