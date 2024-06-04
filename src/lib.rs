@@ -567,6 +567,12 @@ impl SolvedModel {
     fn num_rows(&self) -> usize {
         self.highs.num_rows().expect("invalid number of rows")
     }
+
+    /// Get the number of iterations
+    pub fn get_iteration_count(&self) -> i32 {
+        let iteration_count = unsafe { Highs_getIterationCount(self.highs.ptr())};
+        iteration_count
+    }
 }
 
 /// Concrete values of the solution
