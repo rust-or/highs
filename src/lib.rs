@@ -569,7 +569,7 @@ impl SolvedModel {
     }
 
     /// Get the number of iterations
-    pub fn get_iteration_count(&self) -> i32 {
+    pub fn iteration_count(&self) -> i32 {
         let iteration_count = unsafe { Highs_getIterationCount(self.highs.ptr())};
         iteration_count
     }
