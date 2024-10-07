@@ -8,7 +8,7 @@ use crate::matrix_col::ColMatrix;
 use crate::Problem;
 
 /// Represents a variable
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Col(pub(crate) usize);
 
 /// A complete optimization problem stored by row
