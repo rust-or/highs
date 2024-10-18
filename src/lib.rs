@@ -382,9 +382,9 @@ impl Model {
     /// # Panics
     ///
     /// If HIGHS returns an error status value.
-    pub fn add_row(
+    pub fn add_row<N: Into<f64> + Copy, B: RangeBounds<N>>(
         &mut self,
-        bounds: impl RangeBounds<f64>,
+        bounds: B,
         row_factors: impl IntoIterator<Item = (Col, f64)>,
     ) -> Row {
         self.try_add_row(bounds, row_factors)
@@ -394,9 +394,9 @@ impl Model {
     /// Tries to add a new constraint to the highs model.
     ///
     /// Returns the added row index, or the error status value if HIGHS returned an error status.
-    pub fn try_add_row(
+    pub fn try_add_row<N: Into<f64> + Copy, B: RangeBounds<N>>(
         &mut self,
-        bounds: impl RangeBounds<f64>,
+        bounds: B,
         row_factors: impl IntoIterator<Item = (Col, f64)>,
     ) -> Result<Row, HighsStatus> {
         let (cols, factors): (Vec<_>, Vec<_>) = row_factors.into_iter().unzip();
