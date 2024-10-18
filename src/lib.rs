@@ -425,25 +425,76 @@ impl Model {
     /// # Panics
     ///
     /// If HIGHS returns an error status value.
-    pub fn add_col(
+    pub fn add_col<N: Into<f64> + Copy, B: RangeBounds<N>>(
         &mut self,
         col_factor: f64,
-        bounds: impl RangeBounds<f64>,
+        bounds: B,
         row_factors: impl IntoIterator<Item = (Row, f64)>,
     ) -> Col {
-        self.try_add_column(col_factor, bounds, row_factors)
+        self.try_add_column_with_integrality(col_factor, bounds, row_factors, false)
             .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
     }
 
     /// Tries to add a new variable to the highs model.
     ///
     /// Returns the added column index, or the error status value if HIGHS returned an error status.
-    pub fn try_add_column(
+    pub fn try_add_column<N: Into<f64> + Copy, B: RangeBounds<N>>(
         &mut self,
         col_factor: f64,
-        bounds: impl RangeBounds<f64>,
+        bounds: B,
         row_factors: impl IntoIterator<Item = (Row, f64)>,
     ) -> Result<Col, HighsStatus> {
+        self.try_add_column_with_integrality(col_factor, bounds, row_factors, false)
+    }
+
+    /// Same as [`Model::add_column`], but adds an _integer_ column
+    pub fn add_integer_column<N: Into<f64> + Copy, B: RangeBounds<N>>(
+        &mut self,
+        col_factor: f64,
+        bounds: B,
+        row_factors: impl IntoIterator<Item = (Row, f64)>,
+    ) -> Col {
+        self.try_add_column_with_integrality(col_factor, bounds, row_factors, true)
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
+    }
+
+    /// Same as [`Model::add_column`], but adds an _integer_ column
+    pub fn try_add_integer_column<N: Into<f64> + Copy, B: RangeBounds<N>>(
+        &mut self,
+        col_factor: f64,
+        bounds: B,
+        row_factors: impl IntoIterator<Item = (Row, f64)>,
+    ) -> Result<Col, HighsStatus> {
+        self.try_add_column_with_integrality(col_factor, bounds, row_factors, true)
+    }
+
+    /// Same as [`Model::add_column`], but lets you define whether the new variable should be
+    /// integral or continuous.
+    #[inline]
+    pub fn add_column_with_integrality<N: Into<f64> + Copy, B: RangeBounds<N>>(
+        &mut self,
+        col_factor: f64,
+        bounds: B,
+        row_factors: impl IntoIterator<Item = (Row, f64)>,
+        is_integer: bool,
+    ) -> Col {
+        self.try_add_column_with_integrality(col_factor, bounds, row_factors, is_integer)
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
+    }
+
+    /// Same as [`Model::try_add_column`] but lets you define whether the new variable should be
+    /// integral or continuous.
+    pub fn try_add_column_with_integrality<N, B>(
+        &mut self,
+        col_factor: f64,
+        bounds: B,
+        row_factors: impl IntoIterator<Item = (Row, f64)>,
+        is_integer: bool,
+    ) -> Result<Col, HighsStatus>
+    where
+        N: Into<f64> + Copy,
+        B: RangeBounds<N>,
+    {
         let (rows, factors): (Vec<_>, Vec<_>) = row_factors.into_iter().unzip();
         unsafe {
             highs_call!(Highs_addCol(
@@ -454,8 +505,17 @@ impl Model {
                 rows.len().try_into().unwrap(),
                 rows.into_iter().map(|r| r.0).collect::<Vec<_>>().as_ptr(),
                 factors.as_ptr()
-            ))
-        }?;
+            ))?;
+        }
+        if is_integer {
+            unsafe {
+                highs_call!(Highs_changeColIntegrality(
+                    self.highs.mut_ptr(),
+                    (self.highs.num_cols()? - 1).try_into().unwrap(),
+                    is_integer.into()
+                ))?;
+            }
+        }
 
         Ok(Col(self.highs.num_cols()? - 1))
     }
@@ -856,5 +916,15 @@ mod test {
         let m = Model::new(RowProblem::default());
         let solved = m.solve();
         assert_eq!(solved.objective_value(), 0.0);
+    }
+
+    #[test]
+    fn test_adding_integer_column() {
+        let mut model = RowProblem::new().optimise(Sense::Minimise);
+        let a = model.add_integer_column(1., 0..1, []);
+        let b = model.add_integer_column(1., 0..1, []);
+        model.add_row(1.5.., [(a, 1.), (b, 1.)]);
+        let solved = model.solve();
+        assert_eq!(solved.objective_value(), 2.0);
     }
 }
