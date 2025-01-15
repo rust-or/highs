@@ -56,7 +56,7 @@ impl Problem<ColMatrix> {
     }
 
     /// Same as add_column, but forces the solution to contain an integer value for this variable.
-    /// 
+    ///
     /// ```
     /// use highs::{ColProblem, Sense};
     /// let mut pb = ColProblem::new();
