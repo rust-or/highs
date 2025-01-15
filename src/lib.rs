@@ -476,9 +476,7 @@ impl Model {
     /// Tries to hot-start using an initial guess by passing the column and row primal and dual solution values.
     /// See highs_c_api.h for further details.
     ///
-    /// # Panics
-    ///
-    /// If the data passed in do not have the correct lengths.
+    /// If the data passed in do not have the correct lengths, an `Err` is returned.
     /// `cols` and `col_duals` should have the lengths of `num_cols`.
     /// `rows` and `row_duals` should have the lengths of `num_rows`.
     pub fn try_set_solution(
@@ -490,31 +488,33 @@ impl Model {
     ) -> Result<(), HighsStatus> {
         let num_cols = self.highs.num_cols()?;
         let num_rows = self.highs.num_rows()?;
+        if let Some(cols) = cols {
+            if cols.len() != num_cols {
+                return Err(HighsStatus::Error);
+            }
+        }
+        if let Some(rows) = rows {
+            if rows.len() != num_rows {
+                return Err(HighsStatus::Error);
+            }
+        }
+        if let Some(col_duals) = col_duals {
+            if col_duals.len() != num_cols {
+                return Err(HighsStatus::Error);
+            }
+        }
+        if let Some(row_duals) = row_duals {
+            if row_duals.len() != num_rows {
+                return Err(HighsStatus::Error);
+            }
+        }
         unsafe {
             highs_call!(Highs_setSolution(
                 self.highs.mut_ptr(),
-                cols.map(|x| {
-                    assert_eq!(x.len(), num_cols);
-                    x.as_ptr()
-                })
-                .unwrap_or(null()),
-                rows.map(|x| {
-                    assert_eq!(x.len(), num_rows);
-                    x.as_ptr()
-                })
-                .unwrap_or(null()),
-                col_duals
-                    .map(|x| {
-                        assert_eq!(x.len(), num_cols);
-                        x.as_ptr()
-                    })
-                    .unwrap_or(null()),
-                row_duals
-                    .map(|x| {
-                        assert_eq!(x.len(), num_rows);
-                        x.as_ptr()
-                    })
-                    .unwrap_or(null())
+                cols.map(|x| { x.as_ptr() }).unwrap_or(null()),
+                rows.map(|x| { x.as_ptr() }).unwrap_or(null()),
+                col_duals.map(|x| { x.as_ptr() }).unwrap_or(null()),
+                row_duals.map(|x| { x.as_ptr() }).unwrap_or(null())
             ))
         }?;
         Ok(())
@@ -738,5 +738,21 @@ mod test {
         model.add_row(2.0.., vec![(new_col, 1.0)]);
         let solved = model.solve();
         assert_eq!(solved.status(), HighsModelStatus::Infeasible);
+    }
+
+    #[test]
+    fn test_initial_solution() {
+        use crate::status::HighsModelStatus::Optimal;
+        use crate::{Model, RowProblem, Sense};
+        let mut p = RowProblem::default();
+        p.add_column(1., 0..50);
+        let mut m = Model::new(p);
+        m.make_quiet();
+        m.set_sense(Sense::Maximise);
+        m.set_option("time_limit", 0);
+        m.set_solution(Some(&[50.0]), Some(&[]), Some(&[1.0]), Some(&[]));
+        let solved = m.solve();
+        assert_eq!(solved.status(), Optimal);
+        assert_eq!(solved.get_solution().columns(), &[50.0]);
     }
 }
