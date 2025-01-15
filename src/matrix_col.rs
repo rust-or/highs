@@ -7,7 +7,7 @@ use std::os::raw::c_int;
 use crate::Problem;
 
 /// Represents a constraint
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Row(pub(crate) c_int);
 
 /// A constraint matrix to build column-by-column

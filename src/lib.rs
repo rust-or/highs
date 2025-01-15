@@ -338,7 +338,7 @@ impl Model {
 
     /// Set a custom parameter on the model.
     /// For the list of available options and their documentation, see:
-    /// <https://www.maths.ed.ac.uk/hall/HiGHS/HighsOptions.html>
+    /// <https://ergo-code.github.io/HiGHS/dev/options/definitions/>
     ///
     /// ```
     /// # use highs::ColProblem;
