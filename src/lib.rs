@@ -597,7 +597,8 @@ impl SolvedModel {
         HighsModelStatus::try_from(model_status).unwrap()
     }
 
-    /// The mip gap of the solution. Should be 0.0 if an optimal solution was found.
+    /// The mip gap of the solution. Should be 0.0 if an optimal solution was
+    /// found. Will be INFINITY if no variables have an integer constraint.
     pub fn mip_gap(&self) -> f64 {
         let name = CString::new("mip_gap").unwrap();
         let gap: &mut f64 = &mut -1.0;
@@ -697,6 +698,8 @@ fn try_handle_status(status: c_int, msg: &str) -> Result<HighsStatus, HighsStatu
 
 #[cfg(test)]
 mod test {
+    use std::f64::INFINITY;
+
     use super::*;
 
     fn test_coefs(coefs: [f64; 2]) {
@@ -764,6 +767,38 @@ mod test {
         m.set_solution(Some(&[50.0]), Some(&[]), Some(&[1.0]), Some(&[]));
         let solved = m.solve();
         assert_eq!(solved.status(), Optimal);
+        assert_eq!(solved.get_solution().columns(), &[50.0]);
+    }
+
+    #[test]
+    fn test_mip_gap() {
+        use crate::status::HighsModelStatus::Optimal;
+        use crate::{Model, RowProblem, Sense};
+        let mut p = RowProblem::default();
+        p.add_integer_column(1., 0..50);
+        let mut m = Model::new(p);
+        m.make_quiet();
+        m.set_sense(Sense::Maximise);
+        let solved = m.solve();
+        println!("{:?}", solved.get_solution());
+        assert_eq!(solved.status(), Optimal);
+        assert_eq!(solved.mip_gap(), 0.0);
+        assert_eq!(solved.get_solution().columns(), &[50.0]);
+    }
+
+    #[test]
+    fn test_inf_mip_gap() {
+        use crate::status::HighsModelStatus::Optimal;
+        use crate::{Model, RowProblem, Sense};
+        let mut p = RowProblem::default();
+        p.add_column(1., 0..50);
+        let mut m = Model::new(p);
+        m.make_quiet();
+        m.set_sense(Sense::Maximise);
+        let solved = m.solve();
+        println!("{:?}", solved.get_solution());
+        assert_eq!(solved.status(), Optimal);
+        assert_eq!(solved.mip_gap(), INFINITY);
         assert_eq!(solved.get_solution().columns(), &[50.0]);
     }
 }
