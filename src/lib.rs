@@ -591,10 +591,21 @@ impl HighsPtr {
 }
 
 impl SolvedModel {
-    /// The status of the solution. Should be Optimal if everything went well
+    /// The status of the solution. Should be Optimal if everything went well.
     pub fn status(&self) -> HighsModelStatus {
         let model_status = unsafe { Highs_getModelStatus(self.highs.unsafe_mut_ptr()) };
         HighsModelStatus::try_from(model_status).unwrap()
+    }
+
+    /// The mip gap of the solution. Should be 0.0 if an optimal solution was found.
+    pub fn mip_gap(&self) -> f64 {
+        let name = CString::new("mip_gap").unwrap();
+        let gap: &mut f64 = &mut -1.0;
+        let status =
+            unsafe { Highs_getDoubleInfoValue(self.highs.unsafe_mut_ptr(), name.as_ptr(), gap) };
+        try_handle_status(status, "Highs_getDoubleInfoValue")
+            .map(|_| *gap)
+            .unwrap()
     }
 
     /// Get the solution to the problem
