@@ -215,6 +215,11 @@ where
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Updates the cost of a column
+    pub fn change_column_cost(&mut self, col: Col, cost: f64) {
+        self.colcost[col.index()] = cost
+    }
 }
 
 fn bound_value<N: Into<f64> + Copy>(b: Bound<&N>) -> Option<f64> {
@@ -518,6 +523,18 @@ impl Model {
         }
 
         Ok(Col(self.highs.num_cols()? - 1))
+    }
+
+    /// Updates the cost of a column
+    pub fn change_column_cost(&mut self, col: Col, cost: f64) {
+        unsafe {
+            highs_call!(Highs_changeColCost(
+                self.highs.mut_ptr(),
+                col.index() as c_int,
+                cost
+            ))
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"));
+        }
     }
 
     /// Hot-starts at the initial guess. See HIGHS documentation for further details.
@@ -924,6 +941,29 @@ mod test {
         let a = model.add_integer_column(1., 0..1, []);
         let b = model.add_integer_column(1., 0..1, []);
         model.add_row(1.5.., [(a, 1.), (b, 1.)]);
+        let solved = model.solve();
+        assert_eq!(solved.objective_value(), 2.0);
+    }
+
+    #[test]
+    fn test_problem_change_column_cost() {
+        let mut problem = RowProblem::new();
+        let x = problem.add_column(1., 1..);
+        let solved = problem.clone().optimise(Sense::Minimise).solve();
+        assert_eq!(solved.objective_value(), 1.0);
+        problem.change_column_cost(x, 2.);
+        let solved = problem.optimise(Sense::Minimise).solve();
+        assert_eq!(solved.objective_value(), 2.0);
+    }
+
+    #[test]
+    fn test_model_change_column_cost() {
+        let mut problem = RowProblem::new();
+        let x = problem.add_column(1., 1..);
+        let solved = problem.optimise(Sense::Minimise).solve();
+        assert_eq!(solved.objective_value(), 1.0);
+        let mut model: crate::Model = solved.into();
+        model.change_column_cost(x, 2.);
         let solved = model.solve();
         assert_eq!(solved.objective_value(), 2.0);
     }
