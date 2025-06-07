@@ -118,8 +118,8 @@ fn test_conversion() {
     let mut p = RowProblem::default();
     let x: Col = p.add_column(1., -1..2);
     let y: Col = p.add_column(9., 4f64..inf);
-    p.add_row(-999f64..inf, &[(x, 666.), (y, 777.)]);
-    p.add_row(neg_inf..8880f64, &[(y, 888.)]);
+    p.add_row(-999f64..inf, [(x, 666.), (y, 777.)]);
+    p.add_row(neg_inf..8880f64, [(y, 888.)]);
     assert_eq!(
         p,
         RowProblem {

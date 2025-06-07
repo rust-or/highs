@@ -443,7 +443,7 @@ impl Model {
                 bound_value(bounds.end_bound()).unwrap_or(f64::INFINITY),
                 rows.len().try_into().unwrap(),
                 rows.into_iter()
-                    .map(|r| r.0.try_into().unwrap())
+                    .map(|r| r.0)
                     .collect::<Vec<_>>()
                     .as_ptr(),
                 factors.as_ptr()
@@ -698,8 +698,6 @@ fn try_handle_status(status: c_int, msg: &str) -> Result<HighsStatus, HighsStatu
 
 #[cfg(test)]
 mod test {
-    use std::f64::INFINITY;
-
     use super::*;
 
     fn test_coefs(coefs: [f64; 2]) {
@@ -798,7 +796,7 @@ mod test {
         let solved = m.solve();
         println!("{:?}", solved.get_solution());
         assert_eq!(solved.status(), Optimal);
-        assert_eq!(solved.mip_gap(), INFINITY);
+        assert_eq!(solved.mip_gap(), f64::INFINITY);
         assert_eq!(solved.get_solution().columns(), &[50.0]);
     }
 }

@@ -23,13 +23,13 @@ impl HighsOptionValue for f64 {
     }
 }
 
-impl<'a> HighsOptionValue for &'a CStr {
+impl HighsOptionValue for &CStr {
     unsafe fn apply_to_highs(self, highs: *mut c_void, option: *const c_char) -> c_int {
         highs_sys::Highs_setStringOptionValue(highs, option, self.as_ptr())
     }
 }
 
-impl<'a> HighsOptionValue for &'a [u8] {
+impl HighsOptionValue for &[u8] {
     unsafe fn apply_to_highs(self, highs: *mut c_void, option: *const c_char) -> c_int {
         CString::new(self)
             .expect("invalid highs option value")
@@ -37,7 +37,7 @@ impl<'a> HighsOptionValue for &'a [u8] {
     }
 }
 
-impl<'a> HighsOptionValue for &'a str {
+impl HighsOptionValue for &str {
     unsafe fn apply_to_highs(self, highs: *mut c_void, option: *const c_char) -> c_int {
         self.as_bytes().apply_to_highs(highs, option)
     }
