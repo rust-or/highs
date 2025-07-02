@@ -601,6 +601,16 @@ impl HighsPtr {
 }
 
 impl SolvedModel {
+    /// Return pointer to underlying HiGHS model
+    pub fn as_ptr(&self) -> *const c_void{
+        self.highs.ptr()
+    }
+
+    /// Return mutable pointer to underlying HiGHS model
+    pub fn as_mut_ptr(&mut self) -> *mut c_void{
+        self.highs.mut_ptr()
+    }
+
     /// The status of the solution. Should be Optimal if everything went well.
     pub fn status(&self) -> HighsModelStatus {
         let model_status = unsafe { Highs_getModelStatus(self.highs.unsafe_mut_ptr()) };
