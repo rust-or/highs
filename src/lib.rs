@@ -260,6 +260,16 @@ pub enum Sense {
 }
 
 impl Model {
+    /// Return pointer to underlying HiGHS model
+    pub fn as_ptr(&self) -> *const c_void{
+        self.highs.ptr()
+    }
+
+    /// Return mutable pointer to underlying HiGHS model
+    pub fn as_mut_ptr(&mut self) -> *mut c_void{
+        self.highs.mut_ptr()
+    }
+
     /// Set the optimization sense (minimize by default)
     pub fn set_sense(&mut self, sense: Sense) {
         let ret = unsafe { Highs_changeObjectiveSense(self.highs.mut_ptr(), sense as c_int) };
