@@ -611,6 +611,13 @@ impl SolvedModel {
         self.highs.mut_ptr()
     }
 
+    /// Get the objective value for the solution.
+    ///
+    /// If the model failed to solve, this value may not be meaningful.
+    pub fn objective_value(&self) -> f64 {
+        unsafe { highs_sys::Highs_getObjectiveValue(self.as_ptr()) }
+    }
+
     /// The status of the solution. Should be Optimal if everything went well.
     pub fn status(&self) -> HighsModelStatus {
         let model_status = unsafe { Highs_getModelStatus(self.highs.unsafe_mut_ptr()) };
