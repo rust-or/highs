@@ -388,7 +388,7 @@ impl Model {
         row_factors: impl IntoIterator<Item = (Col, f64)>,
     ) -> Row {
         self.try_add_row(bounds, row_factors)
-            .unwrap_or_else(|e| panic!("HiGHS error: {:?}", e))
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
     }
 
     /// Tries to add a new constraint to the highs model.
@@ -432,7 +432,7 @@ impl Model {
         row_factors: impl IntoIterator<Item = (Row, f64)>,
     ) -> Col {
         self.try_add_column(col_factor, bounds, row_factors)
-            .unwrap_or_else(|e| panic!("HiGHS error: {:?}", e))
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
     }
 
     /// Tries to add a new variable to the highs model.
@@ -480,7 +480,7 @@ impl Model {
         row_duals: Option<&[f64]>,
     ) {
         self.try_set_solution(cols, rows, col_duals, row_duals)
-            .unwrap_or_else(|e| panic!("HiGHS error: {:?}", e))
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
     }
 
     /// Tries to hot-start using an initial guess by passing the column and row primal and dual solution values.
@@ -709,7 +709,7 @@ fn try_handle_status(status: c_int, msg: &str) -> Result<HighsStatus, HighsStatu
     match status_enum {
         status @ HighsStatus::OK => Ok(status),
         status @ HighsStatus::Warning => {
-            log::warn!("HiGHS emitted a warning: {}", msg);
+            log::warn!("HiGHS emitted a warning: {msg}");
             Ok(status)
         }
         error => Err(error),
