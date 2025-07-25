@@ -826,4 +826,26 @@ mod test {
         assert_eq!(solved.mip_gap(), f64::INFINITY);
         assert_eq!(solved.get_solution().columns(), &[50.0]);
     }
+
+    #[test]
+    fn test_objective_value() {
+        use crate::status::HighsModelStatus::Optimal;
+        use crate::{Model, RowProblem, Sense};
+        let mut p = RowProblem::default();
+        p.add_column(1., 0..50);
+        let mut m = Model::new(p);
+        m.make_quiet();
+        m.set_sense(Sense::Maximise);
+        let solved = m.solve();
+        assert_eq!(solved.status(), Optimal);
+        assert_eq!(solved.objective_value(), 50.0);
+    }
+
+    #[test]
+    fn test_objective_value_empty_model() {
+        use crate::{Model, RowProblem};
+        let m = Model::new(RowProblem::default());
+        let solved = m.solve();
+        assert_eq!(solved.objective_value(), 0.0);
+    }
 }
