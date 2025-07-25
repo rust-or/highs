@@ -611,6 +611,13 @@ impl SolvedModel {
         self.highs.mut_ptr()
     }
 
+    /// Get the objective value for the solution.
+    ///
+    /// If an error occurs (e.g. the model is infeasible) then the returned value may be zero.
+    pub fn objective_value(&self) -> f64 {
+        unsafe { highs_sys::Highs_getObjectiveValue(self.as_ptr()) }
+    }
+
     /// The status of the solution. Should be Optimal if everything went well.
     pub fn status(&self) -> HighsModelStatus {
         let model_status = unsafe { Highs_getModelStatus(self.highs.unsafe_mut_ptr()) };
@@ -818,5 +825,27 @@ mod test {
         assert_eq!(solved.status(), Optimal);
         assert_eq!(solved.mip_gap(), f64::INFINITY);
         assert_eq!(solved.get_solution().columns(), &[50.0]);
+    }
+
+    #[test]
+    fn test_objective_value() {
+        use crate::status::HighsModelStatus::Optimal;
+        use crate::{Model, RowProblem, Sense};
+        let mut p = RowProblem::default();
+        p.add_column(1., 0..50);
+        let mut m = Model::new(p);
+        m.make_quiet();
+        m.set_sense(Sense::Maximise);
+        let solved = m.solve();
+        assert_eq!(solved.status(), Optimal);
+        assert_eq!(solved.objective_value(), 50.0);
+    }
+
+    #[test]
+    fn test_objective_value_empty_model() {
+        use crate::{Model, RowProblem};
+        let m = Model::new(RowProblem::default());
+        let solved = m.solve();
+        assert_eq!(solved.objective_value(), 0.0);
     }
 }
