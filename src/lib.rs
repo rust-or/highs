@@ -613,7 +613,7 @@ impl SolvedModel {
 
     /// Get the objective value for the solution.
     ///
-    /// If the model failed to solve, this value may not be meaningful.
+    /// If an error occurs (e.g. the model is infeasible) then the returned value may be zero.
     pub fn objective_value(&self) -> f64 {
         unsafe { highs_sys::Highs_getObjectiveValue(self.as_ptr()) }
     }
