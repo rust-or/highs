@@ -261,12 +261,12 @@ pub enum Sense {
 
 impl Model {
     /// Return pointer to underlying HiGHS model
-    pub fn as_ptr(&self) -> *const c_void{
+    pub fn as_ptr(&self) -> *const c_void {
         self.highs.ptr()
     }
 
     /// Return mutable pointer to underlying HiGHS model
-    pub fn as_mut_ptr(&mut self) -> *mut c_void{
+    pub fn as_mut_ptr(&mut self) -> *mut c_void {
         self.highs.mut_ptr()
     }
 
@@ -452,10 +452,7 @@ impl Model {
                 bound_value(bounds.start_bound()).unwrap_or(f64::NEG_INFINITY),
                 bound_value(bounds.end_bound()).unwrap_or(f64::INFINITY),
                 rows.len().try_into().unwrap(),
-                rows.into_iter()
-                    .map(|r| r.0)
-                    .collect::<Vec<_>>()
-                    .as_ptr(),
+                rows.into_iter().map(|r| r.0).collect::<Vec<_>>().as_ptr(),
                 factors.as_ptr()
             ))
         }?;
@@ -602,12 +599,12 @@ impl HighsPtr {
 
 impl SolvedModel {
     /// Return pointer to underlying HiGHS model
-    pub fn as_ptr(&self) -> *const c_void{
+    pub fn as_ptr(&self) -> *const c_void {
         self.highs.ptr()
     }
 
     /// Return mutable pointer to underlying HiGHS model
-    pub fn as_mut_ptr(&mut self) -> *mut c_void{
+    pub fn as_mut_ptr(&mut self) -> *mut c_void {
         self.highs.mut_ptr()
     }
 
