@@ -119,7 +119,7 @@ use highs_sys::*;
 
 pub use matrix_col::{ColMatrix, Row};
 pub use matrix_row::{Col, RowMatrix};
-pub use status::{HighsModelStatus, HighsStatus};
+pub use status::{HighsModelStatus, HighsSolutionStatus, HighsStatus};
 
 use crate::options::HighsOptionValue;
 
@@ -261,12 +261,12 @@ pub enum Sense {
 
 impl Model {
     /// Return pointer to underlying HiGHS model
-    pub fn as_ptr(&self) -> *const c_void{
+    pub fn as_ptr(&self) -> *const c_void {
         self.highs.ptr()
     }
 
     /// Return mutable pointer to underlying HiGHS model
-    pub fn as_mut_ptr(&mut self) -> *mut c_void{
+    pub fn as_mut_ptr(&mut self) -> *mut c_void {
         self.highs.mut_ptr()
     }
 
@@ -452,10 +452,7 @@ impl Model {
                 bound_value(bounds.start_bound()).unwrap_or(f64::NEG_INFINITY),
                 bound_value(bounds.end_bound()).unwrap_or(f64::INFINITY),
                 rows.len().try_into().unwrap(),
-                rows.into_iter()
-                    .map(|r| r.0)
-                    .collect::<Vec<_>>()
-                    .as_ptr(),
+                rows.into_iter().map(|r| r.0).collect::<Vec<_>>().as_ptr(),
                 factors.as_ptr()
             ))
         }?;
@@ -602,12 +599,12 @@ impl HighsPtr {
 
 impl SolvedModel {
     /// Return pointer to underlying HiGHS model
-    pub fn as_ptr(&self) -> *const c_void{
+    pub fn as_ptr(&self) -> *const c_void {
         self.highs.ptr()
     }
 
     /// Return mutable pointer to underlying HiGHS model
-    pub fn as_mut_ptr(&mut self) -> *mut c_void{
+    pub fn as_mut_ptr(&mut self) -> *mut c_void {
         self.highs.mut_ptr()
     }
 
@@ -618,7 +615,7 @@ impl SolvedModel {
         unsafe { highs_sys::Highs_getObjectiveValue(self.as_ptr()) }
     }
 
-    /// The status of the solution. Should be Optimal if everything went well.
+    /// The model status of the solution. Should be Optimal if everything went well.
     pub fn status(&self) -> HighsModelStatus {
         let model_status = unsafe { Highs_getModelStatus(self.highs.unsafe_mut_ptr()) };
         HighsModelStatus::try_from(model_status).unwrap()
@@ -633,6 +630,18 @@ impl SolvedModel {
             unsafe { Highs_getDoubleInfoValue(self.highs.unsafe_mut_ptr(), name.as_ptr(), gap) };
         try_handle_status(status, "Highs_getDoubleInfoValue")
             .map(|_| *gap)
+            .unwrap()
+    }
+
+    /// The primal solution status, reflecting if a solution was found or not.
+    pub fn primal_solution_status(&self) -> HighsSolutionStatus {
+        let name = CString::new("primal_solution_status").unwrap();
+        let solution_status: &mut HighsInt = &mut -1;
+        let status = unsafe {
+            Highs_getIntInfoValue(self.highs.unsafe_mut_ptr(), name.as_ptr(), solution_status)
+        };
+        try_handle_status(status, "Highs_getIntInfoValue")
+            .map(|_| HighsSolutionStatus::try_from(*solution_status).unwrap())
             .unwrap()
     }
 

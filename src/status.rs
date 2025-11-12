@@ -7,6 +7,7 @@ use highs_sys::*;
 
 /// The kinds of results of an optimization
 #[derive(Clone, Copy, Debug, PartialOrd, PartialEq, Ord, Eq)]
+#[non_exhaustive]
 pub enum HighsModelStatus {
     /// not initialized
     NotSet = MODEL_STATUS_NOTSET as isize,
@@ -39,12 +40,18 @@ pub enum HighsModelStatus {
     ObjectiveBound = MODEL_STATUS_OBJECTIVE_BOUND as isize,
     /// objective target
     ObjectiveTarget = MODEL_STATUS_OBJECTIVE_TARGET as isize,
-    /// reached limit
+    /// reached time limit
     ReachedTimeLimit = MODEL_STATUS_REACHED_TIME_LIMIT as isize,
-    /// reached limit
+    /// reached iteration limit
     ReachedIterationLimit = MODEL_STATUS_REACHED_ITERATION_LIMIT as isize,
     /// Unknown model status
     Unknown = MODEL_STATUS_UNKNOWN as isize,
+    /// reached solution limit
+    ReachedSolutionLimit = MODEL_STATUS_REACHED_SOLUTION_LIMIT as isize,
+    /// interrupted
+    ReachedInterrupt = MODEL_STATUS_REACHED_INTERRUPT as isize,
+    /// reached memory limit
+    ReachedMemoryLimit = MODEL_STATUS_REACHED_MEMORY_LIMIT as isize,
 }
 
 /// This error should never happen: an unexpected status was returned
@@ -67,7 +74,6 @@ impl TryFrom<c_int> for HighsModelStatus {
     type Error = InvalidStatus;
 
     fn try_from(value: c_int) -> Result<Self, Self::Error> {
-        use highs_sys::*;
         match value {
             MODEL_STATUS_NOTSET => Ok(Self::NotSet),
             MODEL_STATUS_LOAD_ERROR => Ok(Self::LoadError),
@@ -85,6 +91,9 @@ impl TryFrom<c_int> for HighsModelStatus {
             MODEL_STATUS_REACHED_TIME_LIMIT => Ok(Self::ReachedTimeLimit),
             MODEL_STATUS_REACHED_ITERATION_LIMIT => Ok(Self::ReachedIterationLimit),
             MODEL_STATUS_UNKNOWN => Ok(Self::Unknown),
+            MODEL_STATUS_REACHED_SOLUTION_LIMIT => Ok(Self::ReachedSolutionLimit),
+            MODEL_STATUS_REACHED_INTERRUPT => Ok(Self::ReachedInterrupt),
+            MODEL_STATUS_REACHED_MEMORY_LIMIT => Ok(Self::ReachedMemoryLimit),
             n => Err(InvalidStatus(n)),
         }
     }
@@ -115,6 +124,30 @@ impl TryFrom<c_int> for HighsStatus {
             STATUS_OK => Ok(Self::OK),
             STATUS_WARNING => Ok(Self::Warning),
             STATUS_ERROR => Ok(Self::Error),
+            n => Err(InvalidStatus(n)),
+        }
+    }
+}
+
+/// The status of a solution
+#[derive(Clone, Copy, Debug, PartialOrd, PartialEq, Ord, Eq)]
+pub enum HighsSolutionStatus {
+    /// No solution found
+    None = SOLUTION_STATUS_NONE as isize,
+    /// No solution exists
+    Infeasible = SOLUTION_STATUS_INFEASIBLE as isize,
+    /// A feasible solution was found
+    Feasible = SOLUTION_STATUS_FEASIBLE as isize,
+}
+
+impl TryFrom<c_int> for HighsSolutionStatus {
+    type Error = InvalidStatus;
+
+    fn try_from(value: c_int) -> Result<Self, Self::Error> {
+        match value {
+            SOLUTION_STATUS_NONE => Ok(Self::None),
+            SOLUTION_STATUS_INFEASIBLE => Ok(Self::Infeasible),
+            SOLUTION_STATUS_FEASIBLE => Ok(Self::Feasible),
             n => Err(InvalidStatus(n)),
         }
     }
