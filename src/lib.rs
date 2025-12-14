@@ -215,6 +215,23 @@ where
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Updates the cost of a column
+    pub fn change_column_cost(&mut self, col: Col, cost: f64) {
+        self.colcost[col.index()] = cost
+    }
+
+    /// Updates the bounds of a column
+    pub fn change_column_bounds<N: Into<f64> + Copy, B: RangeBounds<N>>(
+        &mut self,
+        col: Col,
+        bounds: B,
+    ) {
+        let low = bound_value(bounds.start_bound()).unwrap_or(f64::NEG_INFINITY);
+        let high = bound_value(bounds.end_bound()).unwrap_or(f64::INFINITY);
+        self.collower[col.index()] = low;
+        self.colupper[col.index()] = high;
+    }
 }
 
 fn bound_value<N: Into<f64> + Copy>(b: Bound<&N>) -> Option<f64> {
@@ -274,6 +291,16 @@ impl Model {
     pub fn set_sense(&mut self, sense: Sense) {
         let ret = unsafe { Highs_changeObjectiveSense(self.highs.mut_ptr(), sense as c_int) };
         assert_eq!(ret, STATUS_OK, "changeObjectiveSense failed");
+    }
+
+    /// Gets the number of columns in the model
+    pub fn num_cols(&self) -> usize {
+        self.highs.num_cols().expect("num cols does not fit usize")
+    }
+
+    /// Gets the number of rows in the model
+    pub fn num_rows(&self) -> usize {
+        self.highs.num_rows().expect("num rows does not fit usize")
     }
 
     /// Create a Highs model to be optimized (but don't solve it yet).
@@ -382,9 +409,9 @@ impl Model {
     /// # Panics
     ///
     /// If HIGHS returns an error status value.
-    pub fn add_row(
+    pub fn add_row<N: Into<f64> + Copy, B: RangeBounds<N>>(
         &mut self,
-        bounds: impl RangeBounds<f64>,
+        bounds: B,
         row_factors: impl IntoIterator<Item = (Col, f64)>,
     ) -> Row {
         self.try_add_row(bounds, row_factors)
@@ -394,9 +421,9 @@ impl Model {
     /// Tries to add a new constraint to the highs model.
     ///
     /// Returns the added row index, or the error status value if HIGHS returned an error status.
-    pub fn try_add_row(
+    pub fn try_add_row<N: Into<f64> + Copy, B: RangeBounds<N>>(
         &mut self,
-        bounds: impl RangeBounds<f64>,
+        bounds: B,
         row_factors: impl IntoIterator<Item = (Col, f64)>,
     ) -> Result<Row, HighsStatus> {
         let (cols, factors): (Vec<_>, Vec<_>) = row_factors.into_iter().unzip();
@@ -425,25 +452,76 @@ impl Model {
     /// # Panics
     ///
     /// If HIGHS returns an error status value.
-    pub fn add_col(
+    pub fn add_col<N: Into<f64> + Copy, B: RangeBounds<N>>(
         &mut self,
         col_factor: f64,
-        bounds: impl RangeBounds<f64>,
+        bounds: B,
         row_factors: impl IntoIterator<Item = (Row, f64)>,
     ) -> Col {
-        self.try_add_column(col_factor, bounds, row_factors)
+        self.try_add_column_with_integrality(col_factor, bounds, row_factors, false)
             .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
     }
 
     /// Tries to add a new variable to the highs model.
     ///
     /// Returns the added column index, or the error status value if HIGHS returned an error status.
-    pub fn try_add_column(
+    pub fn try_add_column<N: Into<f64> + Copy, B: RangeBounds<N>>(
         &mut self,
         col_factor: f64,
-        bounds: impl RangeBounds<f64>,
+        bounds: B,
         row_factors: impl IntoIterator<Item = (Row, f64)>,
     ) -> Result<Col, HighsStatus> {
+        self.try_add_column_with_integrality(col_factor, bounds, row_factors, false)
+    }
+
+    /// Same as [`Model::add_column`], but adds an _integer_ column
+    pub fn add_integer_column<N: Into<f64> + Copy, B: RangeBounds<N>>(
+        &mut self,
+        col_factor: f64,
+        bounds: B,
+        row_factors: impl IntoIterator<Item = (Row, f64)>,
+    ) -> Col {
+        self.try_add_column_with_integrality(col_factor, bounds, row_factors, true)
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
+    }
+
+    /// Same as [`Model::add_column`], but adds an _integer_ column
+    pub fn try_add_integer_column<N: Into<f64> + Copy, B: RangeBounds<N>>(
+        &mut self,
+        col_factor: f64,
+        bounds: B,
+        row_factors: impl IntoIterator<Item = (Row, f64)>,
+    ) -> Result<Col, HighsStatus> {
+        self.try_add_column_with_integrality(col_factor, bounds, row_factors, true)
+    }
+
+    /// Same as [`Model::add_column`], but lets you define whether the new variable should be
+    /// integral or continuous.
+    #[inline]
+    pub fn add_column_with_integrality<N: Into<f64> + Copy, B: RangeBounds<N>>(
+        &mut self,
+        col_factor: f64,
+        bounds: B,
+        row_factors: impl IntoIterator<Item = (Row, f64)>,
+        is_integer: bool,
+    ) -> Col {
+        self.try_add_column_with_integrality(col_factor, bounds, row_factors, is_integer)
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
+    }
+
+    /// Same as [`Model::try_add_column`] but lets you define whether the new variable should be
+    /// integral or continuous.
+    pub fn try_add_column_with_integrality<N, B>(
+        &mut self,
+        col_factor: f64,
+        bounds: B,
+        row_factors: impl IntoIterator<Item = (Row, f64)>,
+        is_integer: bool,
+    ) -> Result<Col, HighsStatus>
+    where
+        N: Into<f64> + Copy,
+        B: RangeBounds<N>,
+    {
         let (rows, factors): (Vec<_>, Vec<_>) = row_factors.into_iter().unzip();
         unsafe {
             highs_call!(Highs_addCol(
@@ -454,10 +532,50 @@ impl Model {
                 rows.len().try_into().unwrap(),
                 rows.into_iter().map(|r| r.0).collect::<Vec<_>>().as_ptr(),
                 factors.as_ptr()
-            ))
-        }?;
+            ))?;
+        }
+        if is_integer {
+            unsafe {
+                highs_call!(Highs_changeColIntegrality(
+                    self.highs.mut_ptr(),
+                    (self.highs.num_cols()? - 1).try_into().unwrap(),
+                    is_integer.into()
+                ))?;
+            }
+        }
 
         Ok(Col(self.highs.num_cols()? - 1))
+    }
+
+    /// Updates the cost of a column
+    pub fn change_column_cost(&mut self, col: Col, cost: f64) {
+        unsafe {
+            highs_call!(Highs_changeColCost(
+                self.highs.mut_ptr(),
+                col.index() as c_int,
+                cost
+            ))
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"));
+        }
+    }
+
+    /// Updates the bounds of a column
+    pub fn change_column_bounds<N: Into<f64> + Copy, B: RangeBounds<N>>(
+        &mut self,
+        col: Col,
+        bounds: B,
+    ) {
+        let low = bound_value(bounds.start_bound()).unwrap_or(f64::NEG_INFINITY);
+        let high = bound_value(bounds.end_bound()).unwrap_or(f64::INFINITY);
+        unsafe {
+            highs_call!(Highs_changeColBounds(
+                self.highs.mut_ptr(),
+                col.index() as c_int,
+                low,
+                high
+            ))
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"));
+        }
     }
 
     /// Hot-starts at the initial guess. See HIGHS documentation for further details.
@@ -856,5 +974,72 @@ mod test {
         let m = Model::new(RowProblem::default());
         let solved = m.solve();
         assert_eq!(solved.objective_value(), 0.0);
+    }
+
+    #[test]
+    fn test_adding_integer_column() {
+        let mut model = RowProblem::new().optimise(Sense::Minimise);
+        let a = model.add_integer_column(1., 0..1, []);
+        let b = model.add_integer_column(1., 0..1, []);
+        model.add_row(1.5.., [(a, 1.), (b, 1.)]);
+        let solved = model.solve();
+        assert_eq!(solved.objective_value(), 2.0);
+    }
+
+    #[test]
+    fn test_problem_change_column_cost() {
+        let mut problem = RowProblem::new();
+        let x = problem.add_column(1., 1..);
+        let solved = problem.clone().optimise(Sense::Minimise).solve();
+        assert_eq!(solved.objective_value(), 1.0);
+        problem.change_column_cost(x, 2.);
+        let solved = problem.optimise(Sense::Minimise).solve();
+        assert_eq!(solved.objective_value(), 2.0);
+    }
+
+    #[test]
+    fn test_model_change_column_cost() {
+        let mut problem = RowProblem::new();
+        let x = problem.add_column(1., 1..);
+        let solved = problem.optimise(Sense::Minimise).solve();
+        assert_eq!(solved.objective_value(), 1.0);
+        let mut model: crate::Model = solved.into();
+        model.change_column_cost(x, 2.);
+        let solved = model.solve();
+        assert_eq!(solved.objective_value(), 2.0);
+    }
+
+    #[test]
+    fn test_num_cols_and_rows() {
+        let mut problem = RowProblem::new();
+        let x = problem.add_column(1., -1..);
+        let y = problem.add_column(1., 0..);
+        problem.add_row(..1, [(x, 1.), (y, 1.)]);
+        let model = problem.optimise(Sense::Minimise);
+        assert_eq!(model.num_cols(), 2);
+        assert_eq!(model.num_rows(), 1);
+    }
+
+    #[test]
+    fn test_problem_change_column_bounds() {
+        let mut problem = RowProblem::new();
+        let x = problem.add_column(1., 0..);
+        let solved = problem.clone().optimise(Sense::Minimise).solve();
+        assert_eq!(solved.objective_value(), 0.0);
+        problem.change_column_bounds(x, 1..);
+        let solved = problem.optimise(Sense::Minimise).solve();
+        assert_eq!(solved.objective_value(), 1.0);
+    }
+
+    #[test]
+    fn test_model_change_column_bounds() {
+        let mut problem = RowProblem::new();
+        let x = problem.add_column(1., 0..);
+        let solved = problem.optimise(Sense::Minimise).solve();
+        assert_eq!(solved.objective_value(), 0.0);
+        let mut model: crate::Model = solved.into();
+        model.change_column_bounds(x, 1..);
+        let solved = model.solve();
+        assert_eq!(solved.objective_value(), 1.0);
     }
 }
