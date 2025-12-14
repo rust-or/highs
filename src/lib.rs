@@ -130,10 +130,13 @@ pub type RowProblem = Problem<RowMatrix>;
 /// See [`Problem<ColMatrix>`](Problem#impl).
 pub type ColProblem = Problem<ColMatrix>;
 
+pub mod callback;
 mod matrix_col;
 mod matrix_row;
 mod options;
 mod status;
+
+pub use callback::Callback;
 
 /// A complete optimization problem.
 /// Depending on the `MATRIX` type parameter, the problem will be built
@@ -400,6 +403,39 @@ impl Model {
     pub fn try_solve(mut self) -> Result<SolvedModel, HighsStatus> {
         unsafe { highs_call!(Highs_run(self.highs.mut_ptr())) }
             .map(|_| SolvedModel { highs: self.highs })
+    }
+
+    /// Like [`Self::solve`], but with a user callback
+    pub fn solve_with_callback<Cb>(self, cb: &mut Cb) -> SolvedModel
+    where
+        Cb: Callback,
+    {
+        self.try_solve_with_callback(cb)
+            .expect("HiGHS error: invalid problem")
+    }
+
+    /// Like [`Self::try_solve`], but with a user callback
+    pub fn try_solve_with_callback<Cb>(mut self, cb: &mut Cb) -> Result<SolvedModel, HighsStatus>
+    where
+        Cb: Callback,
+    {
+        let mut user_callback_data = callback::UserCallbackData(cb);
+        unsafe {
+            highs_call!(Highs_setCallback(
+                self.highs.mut_ptr(),
+                Some(callback::callback),
+                (&mut user_callback_data as *mut callback::UserCallbackData).cast()
+            ))
+        }?;
+        unsafe { highs_call!(Highs_run(self.highs.mut_ptr())) }?;
+        unsafe {
+            highs_call!(Highs_setCallback(
+                self.highs.mut_ptr(),
+                None,
+                std::ptr::null_mut()
+            ))
+        }?;
+        Ok(SolvedModel { highs: self.highs })
     }
 
     /// Adds a new constraint to the highs model.
