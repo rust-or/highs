@@ -110,7 +110,7 @@
 
 use std::convert::{TryFrom, TryInto};
 use std::ffi::{c_void, CString};
-use std::num::TryFromIntError;
+use std::num::{NonZeroU32, TryFromIntError};
 use std::ops::{Bound, Index, RangeBounds};
 use std::os::raw::c_int;
 use std::ptr::null;
@@ -389,6 +389,19 @@ impl Model {
     /// ```
     pub fn set_option<STR: Into<Vec<u8>>, V: HighsOptionValue>(&mut self, option: STR, value: V) {
         self.highs.set_option(option, value)
+    }
+
+    /// Set the number of threads to use when solving the model.
+    ///
+    /// ```
+    /// # use highs::ColProblem;
+    /// # use highs::Sense::Maximise;
+    /// # use std::num::NonZeroU32;
+    /// let mut model = ColProblem::default().optimise(Maximise);
+    /// model.set_threads(NonZeroU32::new(1).unwrap());
+    /// ```
+    pub fn set_threads(&mut self, threads: NonZeroU32) {
+        self.set_option("threads", threads.get() as i32);
     }
 
     /// Find the optimal value for the problem, panic if the problem is incoherent
@@ -1042,4 +1055,22 @@ mod test {
         let solved = model.solve();
         assert_eq!(solved.objective_value(), 1.0);
     }
+
+    #[test]
+    fn test_set_threads() {
+        // Verify that the option is accepted by the solver by reading it back
+        // via the raw C API after setting it.
+        use std::num::NonZeroU32;
+        let mut model = Model::new(RowProblem::default());
+        model.set_threads(NonZeroU32::new(2).unwrap());
+        let mut value: i32 = 0;
+        let option = std::ffi::CString::new("threads").unwrap();
+        let status = unsafe {
+            highs_sys::Highs_getIntOptionValue(model.as_mut_ptr(), option.as_ptr(), &mut value)
+        };
+        assert_eq!(status, highs_sys::STATUS_OK);
+        assert_eq!(value, 2);
+    }
+
+
 }
