@@ -306,7 +306,7 @@ impl Model {
     /// Create a Highs model to be optimized (but don't solve it yet).
     /// If the given problem is a [RowProblem], it will have to be converted to a [ColProblem] first,
     /// which takes an amount of time proportional to the size of the problem.
-    /// Panics if the problem is incoherent
+    /// Panics if the problem is incoherent.
     pub fn new<P: Into<Problem<ColMatrix>>>(problem: P) -> Self {
         Self::try_new(problem).expect("incoherent problem")
     }
@@ -314,10 +314,44 @@ impl Model {
     /// Create a Highs model to be optimized (but don't solve it yet).
     /// If the given problem is a [RowProblem], it will have to be converted to a [ColProblem] first,
     /// which takes an amount of time proportional to the size of the problem.
-    /// Returns an error if the problem is incoherent
+    /// Returns an error if the problem is incoherent.
     pub fn try_new<P: Into<Problem<ColMatrix>>>(problem: P) -> Result<Self, HighsStatus> {
-        let mut highs = HighsPtr::default();
-        highs.make_quiet();
+        unsafe {
+            let mut result = Self::empty();
+            result.make_quiet();
+            result.pass_problem(problem)?;
+            Ok(result)
+        }
+    }
+
+    /// Create a Highs model to be optimized (but don't solve it yet).
+    /// If the given problem is a [RowProblem], it will have to be converted to a [ColProblem] first,
+    /// which takes an amount of time proportional to the size of the problem.
+    /// Returns an error if the problem is incoherent.
+    ///
+    /// Compared to `try_new`, this version may result in log messages being produced, which can be
+    /// helpful for debugging.
+    pub fn try_new_loud<P: Into<Problem<ColMatrix>>>(problem: P) -> Result<Self, HighsStatus> {
+        unsafe {
+            let mut result = Self::empty();
+            result.pass_problem(problem)?;
+            Ok(result)
+        }
+    }
+
+    /// Initialize the Highs library but do nothing else to prepare the model.
+    pub unsafe fn empty() -> Self {
+        Self {
+            highs: HighsPtr::default(),
+        }
+    }
+
+    /// Insert the variables and constraints associated with the given problem
+    /// into the uninitialized model.
+    pub unsafe fn pass_problem<P: Into<Problem<ColMatrix>>>(
+        &mut self,
+        problem: P,
+    ) -> Result<(), HighsStatus> {
         let problem = problem.into();
         log::debug!(
             "Adding a problem with {} variables and {} constraints to HiGHS",
@@ -328,7 +362,7 @@ impl Model {
         unsafe {
             if let Some(integrality) = &problem.integrality {
                 highs_call!(Highs_passMip(
-                    highs.mut_ptr(),
+                    self.highs.mut_ptr(),
                     c(problem.num_cols()),
                     c(problem.num_rows()),
                     c(problem.matrix.avalue.len()),
@@ -344,10 +378,10 @@ impl Model {
                     problem.matrix.aindex.as_ptr(),
                     problem.matrix.avalue.as_ptr(),
                     integrality.as_ptr()
-                ))
+                ))?;
             } else {
                 highs_call!(Highs_passLp(
-                    highs.mut_ptr(),
+                    self.highs.mut_ptr(),
                     c(problem.num_cols()),
                     c(problem.num_rows()),
                     c(problem.matrix.avalue.len()),
@@ -362,10 +396,11 @@ impl Model {
                     problem.matrix.astart.as_ptr(),
                     problem.matrix.aindex.as_ptr(),
                     problem.matrix.avalue.as_ptr()
-                ))
+                ))?;
             }
-            .map(|_| Self { highs })
         }
+
+        Ok(())
     }
 
     /// Prevents writing anything to the standard output or to files when solving the model
