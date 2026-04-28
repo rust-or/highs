@@ -1,9 +1,28 @@
+use std::error::Error;
 use std::ffi::{c_void, CStr, CString};
+use std::fmt::{Debug, Display};
 use std::os::raw::{c_char, c_int};
+
+/// An error occurred while trying to set a model option
+#[derive(Debug, Clone)]
+pub struct TrySetOptionError;
+
+impl Display for TrySetOptionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Error setting model option")
+    }
+}
+
+impl Error for TrySetOptionError {}
 
 /// A trait defining the possible value types for HiGHS model options
 pub trait HighsOptionValue {
-    /// Apply the given value to the given optino for the HiGHS model
+    /// Apply the given value to the given option for the HiGHS model
+    ///
+    /// # Safety
+    ///
+    /// This function should only be called with valid pointers to `highs` and `option`. `option`
+    /// should be a NUL-terminated C-string.
     unsafe fn apply_to_highs(self, highs: *mut c_void, option: *const c_char) -> c_int;
 }
 
