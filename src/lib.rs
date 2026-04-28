@@ -119,9 +119,8 @@ use highs_sys::*;
 
 pub use matrix_col::{ColMatrix, Row};
 pub use matrix_row::{Col, RowMatrix};
+pub use options::HighsOptionValue;
 pub use status::{HighsModelStatus, HighsSolutionStatus, HighsStatus};
-
-use crate::options::HighsOptionValue;
 
 /// A problem where variables are declared first, and constraints are then added dynamically.
 /// See [`Problem<RowMatrix>`](Problem#impl-1).

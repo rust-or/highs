@@ -1,7 +1,9 @@
 use std::ffi::{c_void, CStr, CString};
 use std::os::raw::{c_char, c_int};
 
+/// A trait defining the possible value types for HiGHS model options
 pub trait HighsOptionValue {
+    /// Apply the given value to the given optino for the HiGHS model
     unsafe fn apply_to_highs(self, highs: *mut c_void, option: *const c_char) -> c_int;
 }
 
