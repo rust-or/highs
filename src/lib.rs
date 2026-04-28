@@ -1070,6 +1070,4 @@ mod test {
         assert_eq!(status, highs_sys::STATUS_OK);
         assert_eq!(value, 2);
     }
-
-
 }
