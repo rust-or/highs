@@ -708,10 +708,9 @@ impl HighsPtr {
 
     /// Set a custom parameter on the model
     pub fn set_option<STR: Into<Vec<u8>>, V: HighsOptionValue>(&mut self, option: STR, value: V) {
-        let c_str = CString::new(option).expect("invalid option name");
+        let c_str = CString::new(option).expect("Option name contains NUL char");
         let status = unsafe { value.apply_to_highs(self.mut_ptr(), c_str.as_ptr()) };
-        try_handle_status(status, "Highs_setOptionValue")
-            .expect("An error was encountered in HiGHS.");
+        try_handle_status(status, "Highs_setOptionValue").expect("Failed to set model option");
     }
 
     /// Number of variables
