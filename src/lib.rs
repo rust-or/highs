@@ -119,9 +119,8 @@ use highs_sys::*;
 
 pub use matrix_col::{ColMatrix, Row};
 pub use matrix_row::{Col, RowMatrix};
+pub use options::{HighsOptionValue, TrySetOptionError};
 pub use status::{HighsModelStatus, HighsSolutionStatus, HighsStatus};
-
-use crate::options::HighsOptionValue;
 
 /// A problem where variables are declared first, and constraints are then added dynamically.
 /// See [`Problem<RowMatrix>`](Problem#impl-1).
@@ -388,7 +387,28 @@ impl Model {
     /// model.set_option("threads", 4); // solve on 4 threads
     /// ```
     pub fn set_option<STR: Into<Vec<u8>>, V: HighsOptionValue>(&mut self, option: STR, value: V) {
-        self.highs.set_option(option, value)
+        self.try_set_option(option, value).unwrap()
+    }
+
+    /// Try to set a custom parameter on the model, returning an error if it fails.
+    /// For the list of available options and their documentation, see:
+    /// <https://ergo-code.github.io/HiGHS/dev/options/definitions/>
+    ///
+    /// It will fail if the option does not exist or the value is invalid.
+    ///
+    /// ```
+    /// # use highs::ColProblem;
+    /// # use highs::Sense::Maximise;
+    /// let mut model = ColProblem::default().optimise(Maximise);
+    /// assert!(model.try_set_option("presolve", "off").is_ok()); // disable the presolver
+    /// assert!(model.try_set_option("made_up_option", true).is_err());
+    /// ```
+    pub fn try_set_option<STR: Into<Vec<u8>>, V: HighsOptionValue>(
+        &mut self,
+        option: STR,
+        value: V,
+    ) -> Result<(), TrySetOptionError> {
+        self.highs.try_set_option(option, value)
     }
 
     /// Set the number of threads to use when solving the model.
@@ -703,16 +723,22 @@ impl HighsPtr {
         // setting log_file seems to cause a double free in Highs.
         // See https://github.com/rust-or/highs/issues/3
         // self.set_option(&b"log_file"[..], "");
-        self.set_option(&b"output_flag"[..], false);
-        self.set_option(&b"log_to_console"[..], false);
+        self.try_set_option(&b"output_flag"[..], false).unwrap();
+        self.try_set_option(&b"log_to_console"[..], false).unwrap();
     }
 
     /// Set a custom parameter on the model
-    pub fn set_option<STR: Into<Vec<u8>>, V: HighsOptionValue>(&mut self, option: STR, value: V) {
-        let c_str = CString::new(option).expect("invalid option name");
+    pub fn try_set_option<STR: Into<Vec<u8>>, V: HighsOptionValue>(
+        &mut self,
+        option: STR,
+        value: V,
+    ) -> Result<(), TrySetOptionError> {
+        let c_str = CString::new(option).expect("Option name contains NUL char");
         let status = unsafe { value.apply_to_highs(self.mut_ptr(), c_str.as_ptr()) };
-        try_handle_status(status, "Highs_setOptionValue")
-            .expect("An error was encountered in HiGHS.");
+        match try_handle_status(status, "Highs_setOptionValue") {
+            Ok(_) => Ok(()),
+            Err(_) => Err(TrySetOptionError {}),
+        }
     }
 
     /// Number of variables
@@ -1071,6 +1097,4 @@ mod test {
         assert_eq!(status, highs_sys::STATUS_OK);
         assert_eq!(value, 2);
     }
-
-
 }
