@@ -733,7 +733,7 @@ impl HighsPtr {
         option: STR,
         value: V,
     ) -> Result<(), TrySetOptionError> {
-        let c_str = CString::new(option).expect("Option name contains NUL char");
+        let c_str = CString::new(option).map_err(|_| TrySetOptionError {})?;
         let status = unsafe { value.apply_to_highs(self.mut_ptr(), c_str.as_ptr()) };
         match try_handle_status(status, "Highs_setOptionValue") {
             Ok(_) => Ok(()),
