@@ -275,6 +275,27 @@ pub enum Sense {
     Minimise = OBJECTIVE_SENSE_MINIMIZE as isize,
 }
 
+/// Storage layout of a quadratic objective Hessian passed to
+/// [`Model::pass_hessian`].
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+pub enum HessianFormat {
+    /// Only the lower triangle of the symmetric Hessian is stored, in
+    /// compressed sparse column form. This is the usual way to give the
+    /// Hessian of `0.5 x' Q x`.
+    Triangular,
+    /// The full square Hessian is stored in compressed sparse column form.
+    Square,
+}
+
+impl HessianFormat {
+    fn as_raw(self) -> HighsInt {
+        match self {
+            HessianFormat::Triangular => kHighsHessianFormatTriangular,
+            HessianFormat::Square => kHighsHessianFormatSquare,
+        }
+    }
+}
+
 impl Model {
     /// Return pointer to underlying HiGHS model
     pub fn as_ptr(&self) -> *const c_void {
@@ -676,6 +697,90 @@ impl Model {
             ))
         }?;
         Ok(())
+    }
+
+    /// Upload a quadratic objective Hessian `Q`, turning the model into a QP
+    /// with objective `c'x + 0.5 x' Q x` (where `c` is the linear objective
+    /// already set on the columns).
+    ///
+    /// `Q` is given in compressed sparse column form. For
+    /// [`HessianFormat::Triangular`] only the lower triangle is stored:
+    /// `start` has one entry per column (`start.len() == dim`), and `index` /
+    /// `value` list the row index and coefficient of each stored entry,
+    /// column by column.
+    ///
+    /// HiGHS solves **convex** QPs only: `Q` must be positive semidefinite.
+    /// HiGHS does not verify this and behaviour on an indefinite `Q` is
+    /// undefined, so check convexity before calling if the matrix is not PSD
+    /// by construction.
+    ///
+    /// # Panics
+    ///
+    /// If HiGHS returns an error status value, or the slice lengths are
+    /// inconsistent (`start.len() != dim` or `index.len() != value.len()`).
+    pub fn pass_hessian(
+        &mut self,
+        dim: usize,
+        format: HessianFormat,
+        start: &[usize],
+        index: &[usize],
+        value: &[f64],
+    ) {
+        self.try_pass_hessian(dim, format, start, index, value)
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
+    }
+
+    /// Same as [`Model::pass_hessian`], but returns the error status value
+    /// instead of panicking. Returns [`HighsStatus::Error`] when the slice
+    /// lengths are inconsistent. An empty Hessian (`value.is_empty()`) is a
+    /// no-op and leaves the model linear.
+    ///
+    /// ```
+    /// use highs::{RowProblem, Sense, HessianFormat, HighsModelStatus};
+    /// // min x^2 + y^2  s.t.  x + y = 1,  x, y in [-10, 10]
+    /// let mut pb = RowProblem::new();
+    /// let x = pb.add_column(0.0, -10.0..=10.0);
+    /// let y = pb.add_column(0.0, -10.0..=10.0);
+    /// pb.add_row(1.0..=1.0, [(x, 1.0), (y, 1.0)]);
+    /// let mut model = pb.optimise(Sense::Minimise);
+    /// // Hessian of 0.5 x'Qx with Q = diag(2, 2), stored lower-triangular CSC.
+    /// model
+    ///     .try_pass_hessian(2, HessianFormat::Triangular, &[0, 1], &[0, 1], &[2.0, 2.0])
+    ///     .unwrap();
+    /// let solved = model.solve();
+    /// assert_eq!(solved.status(), HighsModelStatus::Optimal);
+    /// let cols = solved.get_solution().columns().to_vec();
+    /// assert!((cols[0] - 0.5).abs() < 1e-6);
+    /// assert!((cols[1] - 0.5).abs() < 1e-6);
+    /// ```
+    pub fn try_pass_hessian(
+        &mut self,
+        dim: usize,
+        format: HessianFormat,
+        start: &[usize],
+        index: &[usize],
+        value: &[f64],
+    ) -> Result<(), HighsStatus> {
+        if start.len() != dim || index.len() != value.len() {
+            return Err(HighsStatus::Error);
+        }
+        if value.is_empty() {
+            return Ok(());
+        }
+        let start: Vec<HighsInt> = start.iter().map(|&s| c(s)).collect();
+        let index: Vec<HighsInt> = index.iter().map(|&i| c(i)).collect();
+        unsafe {
+            highs_call!(Highs_passHessian(
+                self.highs.mut_ptr(),
+                c(dim),
+                c(value.len()),
+                format.as_raw(),
+                start.as_ptr(),
+                index.as_ptr(),
+                value.as_ptr()
+            ))
+        }
+        .map(|_| ())
     }
 }
 
