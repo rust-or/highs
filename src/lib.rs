@@ -1202,4 +1202,33 @@ mod test {
         assert_eq!(status, highs_sys::STATUS_OK);
         assert_eq!(value, 2);
     }
+
+    #[test]
+    fn test_pass_hessian_convex_qp() {
+        use crate::status::HighsModelStatus::Optimal;
+        // min x^2 + y^2  s.t.  x + y = 1,  x, y in [-10, 10]. Optimum at (0.5, 0.5).
+        let mut pb = RowProblem::new();
+        let x = pb.add_column(0., -10.0..=10.0);
+        let y = pb.add_column(0., -10.0..=10.0);
+        pb.add_row(1.0..=1.0, [(x, 1.), (y, 1.)]);
+        let mut model = pb.optimise(Sense::Minimise);
+        model.make_quiet();
+        // Q = diag(2, 2) for the 0.5 x'Qx convention, lower-triangular CSC.
+        model
+            .try_pass_hessian(2, HessianFormat::Triangular, &[0, 1], &[0, 1], &[2.0, 2.0])
+            .unwrap();
+        let solved = model.solve();
+        assert_eq!(solved.status(), Optimal);
+        let cols = solved.get_solution().columns().to_vec();
+        assert!((cols[0] - 0.5).abs() < 1e-6, "x = {}", cols[0]);
+        assert!((cols[1] - 0.5).abs() < 1e-6, "y = {}", cols[1]);
+        assert!((solved.objective_value() - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_pass_hessian_length_mismatch() {
+        let mut model = RowProblem::default().optimise(Sense::Minimise);
+        let err = model.try_pass_hessian(2, HessianFormat::Triangular, &[0], &[], &[]);
+        assert!(err.is_err());
+    }
 }
