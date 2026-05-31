@@ -705,9 +705,9 @@ impl Model {
     ///
     /// `Q` is given in compressed sparse column form. For
     /// [`HessianFormat::Triangular`] only the lower triangle is stored:
-    /// `start` has one entry per column (`start.len() == dim`), and `index` /
-    /// `value` list the row index and coefficient of each stored entry,
-    /// column by column.
+    /// `start` has one entry per column, so its length is the dimension of
+    /// `Q`, `index` / `value` list the row index and coefficient of each
+    /// stored entry, column by column.
     ///
     /// HiGHS solves **convex** QPs only: `Q` must be positive semidefinite.
     /// HiGHS does not verify this and behaviour on an indefinite `Q` is
@@ -716,24 +716,31 @@ impl Model {
     ///
     /// # Panics
     ///
-    /// If HiGHS returns an error status value, or the slice lengths are
-    /// inconsistent (`start.len() != dim` or `index.len() != value.len()`).
+    /// If HiGHS returns an error status value, the slice lengths are
+    /// inconsistent (`index.len() != value.len()`), or an index does not fit
+    /// in HiGHS' integer type.
     pub fn pass_hessian(
         &mut self,
-        dim: usize,
         format: HessianFormat,
         start: &[usize],
         index: &[usize],
         value: &[f64],
     ) {
-        self.try_pass_hessian(dim, format, start, index, value)
-            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
+        self.try_pass_hessian(format, start, index, value)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "pass_hessian failed (format={format:?}, dim={}, nnz={}): {e:?}",
+                    start.len(),
+                    value.len(),
+                )
+            })
     }
 
     /// Same as [`Model::pass_hessian`], but returns the error status value
     /// instead of panicking. Returns [`HighsStatus::Error`] when the slice
-    /// lengths are inconsistent. An empty Hessian (`value.is_empty()`) is a
-    /// no-op and leaves the model linear.
+    /// lengths are inconsistent or an index does not fit in HiGHS' integer
+    /// type. An empty Hessian (`value.is_empty()`) is a no-op and leaves the
+    /// model linear.
     ///
     /// ```
     /// use highs::{RowProblem, Sense, HessianFormat, HighsModelStatus};
@@ -745,7 +752,7 @@ impl Model {
     /// let mut model = pb.optimise(Sense::Minimise);
     /// // Hessian of 0.5 x'Qx with Q = diag(2, 2), stored lower-triangular CSC.
     /// model
-    ///     .try_pass_hessian(2, HessianFormat::Triangular, &[0, 1], &[0, 1], &[2.0, 2.0])
+    ///     .try_pass_hessian(HessianFormat::Triangular, &[0, 1], &[0, 1], &[2.0, 2.0])
     ///     .unwrap();
     /// let solved = model.solve();
     /// assert_eq!(solved.status(), HighsModelStatus::Optimal);
@@ -755,25 +762,32 @@ impl Model {
     /// ```
     pub fn try_pass_hessian(
         &mut self,
-        dim: usize,
         format: HessianFormat,
         start: &[usize],
         index: &[usize],
         value: &[f64],
     ) -> Result<(), HighsStatus> {
-        if start.len() != dim || index.len() != value.len() {
+        if index.len() != value.len() {
             return Err(HighsStatus::Error);
         }
         if value.is_empty() {
             return Ok(());
         }
-        let start: Vec<HighsInt> = start.iter().map(|&s| c(s)).collect();
-        let index: Vec<HighsInt> = index.iter().map(|&i| c(i)).collect();
+        let dim: HighsInt = start.len().try_into().map_err(|_| HighsStatus::Error)?;
+        let nnz: HighsInt = value.len().try_into().map_err(|_| HighsStatus::Error)?;
+        let start: Vec<HighsInt> = start
+            .iter()
+            .map(|&s| s.try_into().map_err(|_| HighsStatus::Error))
+            .collect::<Result<_, _>>()?;
+        let index: Vec<HighsInt> = index
+            .iter()
+            .map(|&i| i.try_into().map_err(|_| HighsStatus::Error))
+            .collect::<Result<_, _>>()?;
         unsafe {
             highs_call!(Highs_passHessian(
                 self.highs.mut_ptr(),
-                c(dim),
-                c(value.len()),
+                dim,
+                nnz,
                 format.as_raw(),
                 start.as_ptr(),
                 index.as_ptr(),
@@ -1215,7 +1229,7 @@ mod test {
         model.make_quiet();
         // Q = diag(2, 2) for the 0.5 x'Qx convention, lower-triangular CSC.
         model
-            .try_pass_hessian(2, HessianFormat::Triangular, &[0, 1], &[0, 1], &[2.0, 2.0])
+            .try_pass_hessian(HessianFormat::Triangular, &[0, 1], &[0, 1], &[2.0, 2.0])
             .unwrap();
         let solved = model.solve();
         assert_eq!(solved.status(), Optimal);
@@ -1228,7 +1242,10 @@ mod test {
     #[test]
     fn test_pass_hessian_length_mismatch() {
         let mut model = RowProblem::default().optimise(Sense::Minimise);
-        let err = model.try_pass_hessian(2, HessianFormat::Triangular, &[0], &[], &[]);
+        // `index` and `value` have different lengths.
+        let err = model.try_pass_hessian(HessianFormat::Triangular, &[0, 1], &[0], &[2.0, 2.0]);
+        assert!(err.is_err());
+    }
         assert!(err.is_err());
     }
 }
