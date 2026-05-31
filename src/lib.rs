@@ -1246,6 +1246,16 @@ mod test {
         let err = model.try_pass_hessian(HessianFormat::Triangular, &[0, 1], &[0], &[2.0, 2.0]);
         assert!(err.is_err());
     }
+
+    #[test]
+    fn test_pass_hessian_index_overflow_is_error() {
+        let mut model = RowProblem::default().optimise(Sense::Minimise);
+        let err = model.try_pass_hessian(
+            HessianFormat::Triangular,
+            &[0, 1],
+            &[0, usize::MAX],
+            &[2.0, 2.0],
+        );
         assert!(err.is_err());
     }
 }
