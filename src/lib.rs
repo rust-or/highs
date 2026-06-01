@@ -705,9 +705,11 @@ impl Model {
     ///
     /// `Q` is given in compressed sparse column form. For
     /// [`HessianFormat::Triangular`] only the lower triangle is stored:
-    /// `start` has one entry per column, so its length is the dimension of
-    /// `Q`, `index` / `value` list the row index and coefficient of each
-    /// stored entry, column by column.
+    /// `start` yields the offset into `entries` at which each column begins,
+    /// so its length is the dimension of `Q`. `entries` yields one
+    /// `(row index, coefficient)` pair per stored value, column by column.
+    /// Both can be anything iterable and the indices may be any integer type
+    /// that converts to HiGHS' integer type.
     ///
     /// HiGHS solves **convex** QPs only: `Q` must be positive semidefinite.
     /// HiGHS does not verify this and behaviour on an indefinite `Q` is
@@ -716,31 +718,23 @@ impl Model {
     ///
     /// # Panics
     ///
-    /// If HiGHS returns an error status value, the slice lengths are
-    /// inconsistent (`index.len() != value.len()`), or an index does not fit
-    /// in HiGHS' integer type.
-    pub fn pass_hessian(
-        &mut self,
-        format: HessianFormat,
-        start: &[usize],
-        index: &[usize],
-        value: &[f64],
-    ) {
-        self.try_pass_hessian(format, start, index, value)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "pass_hessian failed (format={format:?}, dim={}, nnz={}): {e:?}",
-                    start.len(),
-                    value.len(),
-                )
-            })
+    /// If HiGHS returns an error status value, or an index does not fit in
+    /// HiGHS' integer type.
+    pub fn pass_hessian<S, E, I>(&mut self, format: HessianFormat, start: S, entries: E)
+    where
+        S: IntoIterator,
+        S::Item: TryInto<HighsInt>,
+        E: IntoIterator<Item = (I, f64)>,
+        I: TryInto<HighsInt>,
+    {
+        self.try_pass_hessian(format, start, entries)
+            .unwrap_or_else(|e| panic!("pass_hessian failed (format={format:?}): {e:?}"))
     }
 
     /// Same as [`Model::pass_hessian`], but returns the error status value
-    /// instead of panicking. Returns [`HighsStatus::Error`] when the slice
-    /// lengths are inconsistent or an index does not fit in HiGHS' integer
-    /// type. An empty Hessian (`value.is_empty()`) is a no-op and leaves the
-    /// model linear.
+    /// instead of panicking. Returns [`HighsStatus::Error`] when an index does
+    /// not fit in HiGHS' integer type. An empty Hessian (no `entries`) is a
+    /// no-op and leaves the model linear.
     ///
     /// ```
     /// use highs::{RowProblem, Sense, HessianFormat, HighsModelStatus};
@@ -752,7 +746,7 @@ impl Model {
     /// let mut model = pb.optimise(Sense::Minimise);
     /// // Hessian of 0.5 x'Qx with Q = diag(2, 2), stored lower-triangular CSC.
     /// model
-    ///     .try_pass_hessian(HessianFormat::Triangular, &[0, 1], &[0, 1], &[2.0, 2.0])
+    ///     .try_pass_hessian(HessianFormat::Triangular, [0, 1], [(0, 2.0), (1, 2.0)])
     ///     .unwrap();
     /// let solved = model.solve();
     /// assert_eq!(solved.status(), HighsModelStatus::Optimal);
@@ -760,29 +754,35 @@ impl Model {
     /// assert!((cols[0] - 0.5).abs() < 1e-6);
     /// assert!((cols[1] - 0.5).abs() < 1e-6);
     /// ```
-    pub fn try_pass_hessian(
+    pub fn try_pass_hessian<S, E, I>(
         &mut self,
         format: HessianFormat,
-        start: &[usize],
-        index: &[usize],
-        value: &[f64],
-    ) -> Result<(), HighsStatus> {
-        if index.len() != value.len() {
-            return Err(HighsStatus::Error);
+        start: S,
+        entries: E,
+    ) -> Result<(), HighsStatus>
+    where
+        S: IntoIterator,
+        S::Item: TryInto<HighsInt>,
+        E: IntoIterator<Item = (I, f64)>,
+        I: TryInto<HighsInt>,
+    {
+        let start: Vec<HighsInt> = start
+            .into_iter()
+            .map(|s| s.try_into().map_err(|_| HighsStatus::Error))
+            .collect::<Result<_, _>>()?;
+        let entries = entries.into_iter();
+        let (lower, _) = entries.size_hint();
+        let mut index: Vec<HighsInt> = Vec::with_capacity(lower);
+        let mut value: Vec<f64> = Vec::with_capacity(lower);
+        for (i, v) in entries {
+            index.push(i.try_into().map_err(|_| HighsStatus::Error)?);
+            value.push(v);
         }
         if value.is_empty() {
             return Ok(());
         }
         let dim: HighsInt = start.len().try_into().map_err(|_| HighsStatus::Error)?;
         let nnz: HighsInt = value.len().try_into().map_err(|_| HighsStatus::Error)?;
-        let start: Vec<HighsInt> = start
-            .iter()
-            .map(|&s| s.try_into().map_err(|_| HighsStatus::Error))
-            .collect::<Result<_, _>>()?;
-        let index: Vec<HighsInt> = index
-            .iter()
-            .map(|&i| i.try_into().map_err(|_| HighsStatus::Error))
-            .collect::<Result<_, _>>()?;
         unsafe {
             highs_call!(Highs_passHessian(
                 self.highs.mut_ptr(),
