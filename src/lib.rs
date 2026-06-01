@@ -1229,7 +1229,7 @@ mod test {
         model.make_quiet();
         // Q = diag(2, 2) for the 0.5 x'Qx convention, lower-triangular CSC.
         model
-            .try_pass_hessian(HessianFormat::Triangular, &[0, 1], &[0, 1], &[2.0, 2.0])
+            .try_pass_hessian(HessianFormat::Triangular, [0, 1], [(0, 2.0), (1, 2.0)])
             .unwrap();
         let solved = model.solve();
         assert_eq!(solved.status(), Optimal);
@@ -1240,21 +1240,12 @@ mod test {
     }
 
     #[test]
-    fn test_pass_hessian_length_mismatch() {
-        let mut model = RowProblem::default().optimise(Sense::Minimise);
-        // `index` and `value` have different lengths.
-        let err = model.try_pass_hessian(HessianFormat::Triangular, &[0, 1], &[0], &[2.0, 2.0]);
-        assert!(err.is_err());
-    }
-
-    #[test]
     fn test_pass_hessian_index_overflow_is_error() {
         let mut model = RowProblem::default().optimise(Sense::Minimise);
         let err = model.try_pass_hessian(
             HessianFormat::Triangular,
-            &[0, 1],
-            &[0, usize::MAX],
-            &[2.0, 2.0],
+            [0usize, 1],
+            [(0usize, 2.0), (usize::MAX, 2.0)],
         );
         assert!(err.is_err());
     }
