@@ -1249,4 +1249,23 @@ mod test {
         );
         assert!(err.is_err());
     }
+
+    #[test]
+    fn test_pass_hessian_accepts_lazy_iterators() {
+        use crate::status::HighsModelStatus::Optimal;
+        let mut pb = RowProblem::new();
+        let x = pb.add_column(0., -10.0..=10.0);
+        let y = pb.add_column(0., -10.0..=10.0);
+        pb.add_row(1.0..=1.0, [(x, 1.), (y, 1.)]);
+        let mut model = pb.optimise(Sense::Minimise);
+        model.make_quiet();
+        model
+            .try_pass_hessian(HessianFormat::Triangular, 0..2, (0..2).map(|i| (i, 2.0)))
+            .unwrap();
+        let solved = model.solve();
+        assert_eq!(solved.status(), Optimal);
+        let cols = solved.get_solution().columns().to_vec();
+        assert!((cols[0] - 0.5).abs() < 1e-6, "x = {}", cols[0]);
+        assert!((cols[1] - 0.5).abs() < 1e-6, "y = {}", cols[1]);
+    }
 }
