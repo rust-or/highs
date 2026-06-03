@@ -296,6 +296,62 @@ impl HessianFormat {
     }
 }
 
+/// Reason a Hessian could not be uploaded by [`Model::try_pass_hessian`].
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum HessianError {
+    /// The dimension of `Q` (its number of columns) does not fit in HiGHS'
+    /// integer type.
+    DimensionTooLarge {
+        /// The dimension that was requested.
+        dim: usize,
+    },
+    /// The number of stored nonzero coefficients does not fit in HiGHS'
+    /// integer type.
+    TooManyNonZeros {
+        /// The number of nonzeros that was requested.
+        nnz: usize,
+    },
+    /// A row index does not fit in HiGHS' integer type.
+    IndexTooLarge {
+        /// Position, among the stored coefficients, of the offending entry.
+        entry: usize,
+    },
+    /// HiGHS rejected the Hessian and returned this status.
+    Highs(HighsStatus),
+}
+
+impl std::fmt::Display for HessianError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let max = HighsInt::MAX;
+        match *self {
+            HessianError::DimensionTooLarge { dim } => write!(
+                f,
+                "the dimension of the quadratic objective matrix (Hessian Q) is too large: \
+                 got {dim} but HiGHS supports at most {max}"
+            ),
+            HessianError::TooManyNonZeros { nnz } => write!(
+                f,
+                "the Hessian Q has too many nonzero coefficients: \
+                 got {nnz} but HiGHS supports at most {max}"
+            ),
+            HessianError::IndexTooLarge { entry } => write!(
+                f,
+                "the row index of Hessian coefficient {entry} is too large \
+                 for HiGHS' integer type (at most {max})"
+            ),
+            HessianError::Highs(status) => write!(f, "HiGHS rejected the Hessian: {status:?}"),
+        }
+    }
+}
+
+impl std::error::Error for HessianError {}
+
+impl From<HighsStatus> for HessianError {
+    fn from(status: HighsStatus) -> Self {
+        HessianError::Highs(status)
+    }
+}
+
 impl Model {
     /// Return pointer to underlying HiGHS model
     pub fn as_ptr(&self) -> *const c_void {
@@ -703,38 +759,38 @@ impl Model {
     /// with objective `c'x + 0.5 x' Q x` (where `c` is the linear objective
     /// already set on the columns).
     ///
-    /// `Q` is given in compressed sparse column form. For
-    /// [`HessianFormat::Triangular`] only the lower triangle is stored:
-    /// `start` yields the offset into `entries` at which each column begins,
-    /// so its length is the dimension of `Q`. `entries` yields one
-    /// `(row index, coefficient)` pair per stored value, column by column.
-    /// Both can be anything iterable and the indices may be any integer type
+    /// `Q` is provided column by column: `columns` yields one item per column
+    /// of `Q` and each column yields its stored `(row index, coefficient)` pairs.
+    /// For [`HessianFormat::Triangular`] store only the lower triangle.
+    /// For [`HessianFormat::Square`] store the full matrix.
+    /// Both levels can be anything iterable and the indices may be any integer type
     /// that converts to HiGHS' integer type.
     ///
-    /// HiGHS solves **convex** QPs only: `Q` must be positive semidefinite.
-    /// HiGHS does not verify this and behaviour on an indefinite `Q` is
-    /// undefined, so check convexity before calling if the matrix is not PSD
-    /// by construction.
+    /// HiGHS solves **convex** QPs only: `Q` should be positive semidefinite.
+    /// HiGHS does not check this:
+    /// on an indefinite `Q` it may return a wrong or
+    /// non-optimal solution.
+    /// HiGHS, however, does test for negative diagonal values.
+    /// Verify convexity yourself if `Q` is not PSD by construction.
     ///
     /// # Panics
     ///
-    /// If HiGHS returns an error status value, or an index does not fit in
-    /// HiGHS' integer type.
-    pub fn pass_hessian<S, E, I>(&mut self, format: HessianFormat, start: S, entries: E)
+    /// If HiGHS returns an error status value, or an index/size does not fit in
+    /// HiGHS' integer type. Use [`Model::try_pass_hessian`] to handle these as
+    /// a [`HessianError`] instead.
+    pub fn pass_hessian<C, E, I>(&mut self, format: HessianFormat, columns: C)
     where
-        S: IntoIterator,
-        S::Item: TryInto<HighsInt>,
+        C: IntoIterator<Item = E>,
         E: IntoIterator<Item = (I, f64)>,
         I: TryInto<HighsInt>,
     {
-        self.try_pass_hessian(format, start, entries)
-            .unwrap_or_else(|e| panic!("pass_hessian failed (format={format:?}): {e:?}"))
+        self.try_pass_hessian(format, columns)
+            .unwrap_or_else(|e| panic!("pass_hessian failed: {e}"))
     }
 
-    /// Same as [`Model::pass_hessian`], but returns the error status value
-    /// instead of panicking. Returns [`HighsStatus::Error`] when an index does
-    /// not fit in HiGHS' integer type. An empty Hessian (no `entries`) is a
-    /// no-op and leaves the model linear.
+    /// Same as [`Model::pass_hessian`], but returns a [`HessianError`] instead
+    /// of panicking. An empty Hessian (no coefficients) is a no-op and leaves
+    /// the model linear.
     ///
     /// ```
     /// use highs::{RowProblem, Sense, HessianFormat, HighsModelStatus};
@@ -744,9 +800,9 @@ impl Model {
     /// let y = pb.add_column(0.0, -10.0..=10.0);
     /// pb.add_row(1.0..=1.0, [(x, 1.0), (y, 1.0)]);
     /// let mut model = pb.optimise(Sense::Minimise);
-    /// // Hessian of 0.5 x'Qx with Q = diag(2, 2), stored lower-triangular CSC.
+    /// // Q = diag(2, 2): one column per variable, each with its diagonal entry.
     /// model
-    ///     .try_pass_hessian(HessianFormat::Triangular, [0, 1], [(0, 2.0), (1, 2.0)])
+    ///     .try_pass_hessian(HessianFormat::Triangular, [[(0, 2.0)], [(1, 2.0)]])
     ///     .unwrap();
     /// let solved = model.solve();
     /// assert_eq!(solved.status(), HighsModelStatus::Optimal);
@@ -754,35 +810,47 @@ impl Model {
     /// assert!((cols[0] - 0.5).abs() < 1e-6);
     /// assert!((cols[1] - 0.5).abs() < 1e-6);
     /// ```
-    pub fn try_pass_hessian<S, E, I>(
+    pub fn try_pass_hessian<C, E, I>(
         &mut self,
         format: HessianFormat,
-        start: S,
-        entries: E,
-    ) -> Result<(), HighsStatus>
+        columns: C,
+    ) -> Result<(), HessianError>
     where
-        S: IntoIterator,
-        S::Item: TryInto<HighsInt>,
+        C: IntoIterator<Item = E>,
         E: IntoIterator<Item = (I, f64)>,
         I: TryInto<HighsInt>,
     {
-        let start: Vec<HighsInt> = start
-            .into_iter()
-            .map(|s| s.try_into().map_err(|_| HighsStatus::Error))
-            .collect::<Result<_, _>>()?;
-        let entries = entries.into_iter();
-        let (lower, _) = entries.size_hint();
-        let mut index: Vec<HighsInt> = Vec::with_capacity(lower);
-        let mut value: Vec<f64> = Vec::with_capacity(lower);
-        for (i, v) in entries {
-            index.push(i.try_into().map_err(|_| HighsStatus::Error)?);
-            value.push(v);
+        // Build the compressed-sparse-column arrays from the per-column
+        // iterators.
+        let mut start: Vec<HighsInt> = Vec::new();
+        let mut index: Vec<HighsInt> = Vec::new();
+        let mut value: Vec<f64> = Vec::new();
+        for column in columns {
+            let offset = index.len();
+            start.push(
+                offset
+                    .try_into()
+                    .map_err(|_| HessianError::TooManyNonZeros { nnz: offset })?,
+            );
+            for (i, v) in column {
+                let i: HighsInt = i
+                    .try_into()
+                    .map_err(|_| HessianError::IndexTooLarge { entry: index.len() })?;
+                index.push(i);
+                value.push(v);
+            }
         }
         if value.is_empty() {
             return Ok(());
         }
-        let dim: HighsInt = start.len().try_into().map_err(|_| HighsStatus::Error)?;
-        let nnz: HighsInt = value.len().try_into().map_err(|_| HighsStatus::Error)?;
+        let dim: HighsInt = start
+            .len()
+            .try_into()
+            .map_err(|_| HessianError::DimensionTooLarge { dim: start.len() })?;
+        let nnz: HighsInt = value
+            .len()
+            .try_into()
+            .map_err(|_| HessianError::TooManyNonZeros { nnz: value.len() })?;
         unsafe {
             highs_call!(Highs_passHessian(
                 self.highs.mut_ptr(),
@@ -795,6 +863,7 @@ impl Model {
             ))
         }
         .map(|_| ())
+        .map_err(HessianError::from)
     }
 }
 
@@ -1227,9 +1296,9 @@ mod test {
         pb.add_row(1.0..=1.0, [(x, 1.), (y, 1.)]);
         let mut model = pb.optimise(Sense::Minimise);
         model.make_quiet();
-        // Q = diag(2, 2) for the 0.5 x'Qx convention, lower-triangular CSC.
+        // Q = diag(2, 2) for the 0.5 x'Qx convention: one column per variable.
         model
-            .try_pass_hessian(HessianFormat::Triangular, [0, 1], [(0, 2.0), (1, 2.0)])
+            .try_pass_hessian(HessianFormat::Triangular, [[(0, 2.0)], [(1, 2.0)]])
             .unwrap();
         let solved = model.solve();
         assert_eq!(solved.status(), Optimal);
@@ -1244,10 +1313,9 @@ mod test {
         let mut model = RowProblem::default().optimise(Sense::Minimise);
         let err = model.try_pass_hessian(
             HessianFormat::Triangular,
-            [0usize, 1],
-            [(0usize, 2.0), (usize::MAX, 2.0)],
+            [vec![(0usize, 2.0)], vec![(usize::MAX, 2.0)]],
         );
-        assert!(err.is_err());
+        assert!(matches!(err, Err(HessianError::IndexTooLarge { entry: 1 })));
     }
 
     #[test]
@@ -1260,7 +1328,10 @@ mod test {
         let mut model = pb.optimise(Sense::Minimise);
         model.make_quiet();
         model
-            .try_pass_hessian(HessianFormat::Triangular, 0..2, (0..2).map(|i| (i, 2.0)))
+            .try_pass_hessian(
+                HessianFormat::Triangular,
+                (0..2).map(|j| std::iter::once((j, 2.0))),
+            )
             .unwrap();
         let solved = model.solve();
         assert_eq!(solved.status(), Optimal);
