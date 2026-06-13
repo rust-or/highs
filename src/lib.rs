@@ -1018,6 +1018,48 @@ impl SolvedModel {
         }
     }
 
+    /// Read a `HighsInt`-typed solution info value by name
+    // and widen it to `i64`.
+    fn int_info_value(&self, name: &str) -> i64 {
+        let name = CString::new(name).unwrap();
+        let value: &mut HighsInt = &mut -1;
+        let status =
+            unsafe { Highs_getIntInfoValue(self.highs.unsafe_mut_ptr(), name.as_ptr(), value) };
+        try_handle_status(status, "Highs_getIntInfoValue")
+            .map(|_| i64::from(*value))
+            .unwrap()
+    }
+
+    /// The number of simplex iterations performed for this solution
+    /// (`0` when the interior-point method was not used).
+    pub fn simplex_iteration_count(&self) -> i64 {
+        self.int_info_value("simplex_iteration_count")
+    }
+
+    /// The number of interior-point (IPM) iterations performed for this solution
+    /// (`0` when the interior-point method was not used).
+    pub fn ipm_iteration_count(&self) -> i64 {
+        self.int_info_value("ipm_iteration_count")
+    }
+
+    /// The number of QP solver iterations performed for this solution (`0` when
+    /// the model was not a quadratic program).
+    pub fn qp_iteration_count(&self) -> i64 {
+        self.int_info_value("qp_iteration_count")
+    }
+
+    /// The number of first-order (PDLP) iterations performed for this solution
+    /// (`0` when the PDLP solver was not used).
+    pub fn pdlp_iteration_count(&self) -> i64 {
+        self.int_info_value("pdlp_iteration_count")
+    }
+
+    /// The number of crossover iterations performed for this solution
+    /// (`0` when no crossover ran).
+    pub fn crossover_iteration_count(&self) -> i64 {
+        self.int_info_value("crossover_iteration_count")
+    }
+
     /// Number of variables
     fn num_cols(&self) -> usize {
         self.highs.num_cols().expect("invalid number of columns")
