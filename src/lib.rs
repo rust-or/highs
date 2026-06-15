@@ -969,25 +969,17 @@ impl SolvedModel {
     /// The mip gap of the solution. Should be 0.0 if an optimal solution was
     /// found. Will be INFINITY if no variables have an integer constraint.
     pub fn mip_gap(&self) -> f64 {
-        let name = CString::new("mip_gap").unwrap();
-        let gap: &mut f64 = &mut -1.0;
-        let status =
-            unsafe { Highs_getDoubleInfoValue(self.highs.unsafe_mut_ptr(), name.as_ptr(), gap) };
-        try_handle_status(status, "Highs_getDoubleInfoValue")
-            .map(|_| *gap)
-            .unwrap()
+        self.double_info_value(c"mip_gap")
+            .expect("mip_gap is a known double info key")
     }
 
     /// The primal solution status, reflecting if a solution was found or not.
     pub fn primal_solution_status(&self) -> HighsSolutionStatus {
-        let name = CString::new("primal_solution_status").unwrap();
-        let solution_status: &mut HighsInt = &mut -1;
-        let status = unsafe {
-            Highs_getIntInfoValue(self.highs.unsafe_mut_ptr(), name.as_ptr(), solution_status)
-        };
-        try_handle_status(status, "Highs_getIntInfoValue")
-            .map(|_| HighsSolutionStatus::try_from(*solution_status).unwrap())
-            .unwrap()
+        let value = self
+            .int_info_value(c"primal_solution_status")
+            .expect("primal_solution_status is a known HighsInt info key");
+        HighsSolutionStatus::try_from(value as HighsInt)
+            .expect("HiGHS returned an unrecognized primal solution status")
     }
 
     /// Get the solution to the problem
@@ -1018,45 +1010,70 @@ impl SolvedModel {
         }
     }
 
-    /// Read a `HighsInt`-typed solution info value by name
-    /// and widen it to `i64`.
-    fn int_info_value(&self, name: &CStr) -> i64 {
+    /// Read a `HighsInt`-typed solution info value by name and widen it to
+    /// `i64`.
+    ///
+    /// `name` must be a key that HiGHS exposes as a `HighsInt`-typed info value.
+    ///
+    /// # Errors
+    ///
+    /// Returns the failing [`HighsStatus`] when `name` is not a known
+    /// `HighsInt`-typed info key.
+    pub fn int_info_value(&self, name: &CStr) -> Result<i64, HighsStatus> {
         let value: &mut HighsInt = &mut -1;
         let status =
             unsafe { Highs_getIntInfoValue(self.highs.unsafe_mut_ptr(), name.as_ptr(), value) };
-        try_handle_status(status, "Highs_getIntInfoValue")
-            .map(|_| i64::from(*value))
-            .unwrap()
+        try_handle_status(status, "Highs_getIntInfoValue").map(|_| i64::from(*value))
+    }
+
+    /// Read a `double`-typed solution info value by name.
+    ///
+    /// `name` must be a key that HiGHS exposes as a `double`-typed info value.
+    ///
+    /// # Errors
+    ///
+    /// Returns the failing [`HighsStatus`] when `name` is not a known
+    /// `double`-typed info key.
+    pub fn double_info_value(&self, name: &CStr) -> Result<f64, HighsStatus> {
+        let value: &mut f64 = &mut -1.0;
+        let status =
+            unsafe { Highs_getDoubleInfoValue(self.highs.unsafe_mut_ptr(), name.as_ptr(), value) };
+        try_handle_status(status, "Highs_getDoubleInfoValue").map(|_| *value)
     }
 
     /// The number of simplex iterations performed for this solution
     /// (`0` when the interior-point method was not used).
     pub fn simplex_iteration_count(&self) -> i64 {
         self.int_info_value(c"simplex_iteration_count")
+            .expect("simplex_iteration_count is a known HighsInt info key")
     }
 
     /// The number of interior-point (IPM) iterations performed for this solution
     /// (`0` when the interior-point method was not used).
     pub fn ipm_iteration_count(&self) -> i64 {
         self.int_info_value(c"ipm_iteration_count")
+            .expect("ipm_iteration_count is a known HighsInt info key")
     }
 
     /// The number of QP solver iterations performed for this solution (`0` when
     /// the model was not a quadratic program).
     pub fn qp_iteration_count(&self) -> i64 {
         self.int_info_value(c"qp_iteration_count")
+            .expect("qp_iteration_count is a known HighsInt info key")
     }
 
     /// The number of first-order (PDLP) iterations performed for this solution
     /// (`0` when the PDLP solver was not used).
     pub fn pdlp_iteration_count(&self) -> i64 {
         self.int_info_value(c"pdlp_iteration_count")
+            .expect("pdlp_iteration_count is a known HighsInt info key")
     }
 
     /// The number of crossover iterations performed for this solution
     /// (`0` when no crossover ran).
     pub fn crossover_iteration_count(&self) -> i64 {
         self.int_info_value(c"crossover_iteration_count")
+            .expect("crossover_iteration_count is a known HighsInt info key")
     }
 
     /// Number of variables
