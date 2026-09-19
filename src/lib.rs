@@ -1170,6 +1170,21 @@ impl SolvedModel {
         try_handle_status(status, "Highs_getIntInfoValue").map(|_| i64::from(*value))
     }
 
+    /// Read an `int64_t`-typed solution info value by name.
+    ///
+    /// `name` must be a key that HiGHS exposes as an `int64_t`-typed info value.
+    ///
+    /// # Errors
+    ///
+    /// Returns the failing [`HighsStatus`] when `name` is not a known
+    /// `int64_t`-typed info key.
+    pub fn int64_info_value(&self, name: &CStr) -> Result<i64, HighsStatus> {
+        let value: &mut i64 = &mut -1;
+        let status =
+            unsafe { Highs_getInt64InfoValue(self.highs.unsafe_mut_ptr(), name.as_ptr(), value) };
+        try_handle_status(status, "Highs_getInt64InfoValue").map(|_| *value)
+    }
+
     /// Read a `double`-typed solution info value by name.
     ///
     /// `name` must be a key that HiGHS exposes as a `double`-typed info value.
@@ -1365,6 +1380,15 @@ mod test {
         assert_eq!(solved.status(), Optimal);
         assert_eq!(solved.mip_gap(), 0.0);
         assert_eq!(solved.get_solution().columns(), &[50.0]);
+    }
+
+    #[test]
+    fn test_int64_info_value() {
+        let mut problem = RowProblem::default();
+        problem.add_integer_column(1., 0..50);
+        let solved = problem.optimise(Sense::Maximise).solve();
+
+        assert!(solved.int64_info_value(c"mip_node_count").is_ok());
     }
 
     #[test]
