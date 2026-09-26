@@ -267,7 +267,11 @@ pub struct Model {
 pub struct LinearObjective {
     /// One coefficient for each column in the model.
     pub coefficients: Vec<f64>,
-    /// Weight used when HiGHS blends multiple objectives.
+    /// Multiplier used when HiGHS blends multiple objectives. Its absolute
+    /// value multiplies its contribution to the weighted sum, so a larger
+    /// absolute weight gives it more influence for objective values on the same
+    /// scale. A positive weight minimizes this objective and a negative weight
+    /// maximizes it. Weight does not set lexicographic priority.
     pub weight: f64,
 }
 
@@ -648,6 +652,31 @@ impl Model {
 
     /// Add a linear objective to the model using HiGHS' default objective
     /// offset, tolerances, and priority.
+    ///
+    /// The objective's weight scales its contribution to the blended objective.
+    /// For example, a negative weight maximizes that objective while the model
+    /// minimizes the weighted sum:
+    ///
+    /// ```
+    /// use highs::{LinearObjective, RowProblem, Sense};
+    ///
+    /// let mut problem = RowProblem::new();
+    /// let x = problem.add_column(0.0, 0.0..=1.0);
+    /// let y = problem.add_column(0.0, 0.0..=1.0);
+    /// problem.add_row(1.0.., [(x, 1.0), (y, 1.0)]);
+    ///
+    /// let mut model = problem.optimise(Sense::Minimise);
+    /// let mut maximize_x = LinearObjective::new(vec![1.0, 0.0]);
+    /// maximize_x.weight = -2.0;
+    /// model.try_add_linear_objective(maximize_x).unwrap();
+    /// model
+    ///     .try_add_linear_objective(LinearObjective::new(vec![0.0, 1.0]))
+    ///     .unwrap();
+    /// model.set_option("blend_multi_objectives", true);
+    ///
+    /// let solved = model.solve();
+    /// assert_eq!(solved.get_solution().columns(), &[1.0, 0.0]);
+    /// ```
     pub fn try_add_linear_objective(
         &mut self,
         objective: LinearObjective,
