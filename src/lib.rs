@@ -113,14 +113,15 @@ use std::ffi::{c_void, CStr, CString};
 use std::num::{NonZeroU32, TryFromIntError};
 use std::ops::{Bound, Index, RangeBounds};
 use std::os::raw::c_int;
-use std::ptr::null;
+use std::ptr::{null, null_mut};
 
 use highs_sys::*;
 
+pub use iis::Iis;
 pub use matrix_col::{ColMatrix, Row};
 pub use matrix_row::{Col, RowMatrix};
 pub use options::{HighsOptionValue, TrySetOptionError};
-pub use status::{HighsModelStatus, HighsSolutionStatus, HighsStatus};
+pub use status::{HighsIisBoundStatus, HighsModelStatus, HighsSolutionStatus, HighsStatus};
 
 /// A problem where variables are declared first, and constraints are then added dynamically.
 /// See [`Problem<RowMatrix>`](Problem#impl-1).
@@ -234,6 +235,16 @@ where
         self.collower[col.index()] = low;
         self.colupper[col.index()] = high;
     }
+
+    /// The bounds `(lower, upper)` of a column
+    pub fn get_column_bounds(&self, col: Col) -> (f64, f64) {
+        (self.collower[col.index()], self.colupper[col.index()])
+    }
+
+    /// The objective coefficient of a column
+    pub fn get_column_cost(&self, col: Col) -> f64 {
+        self.colcost[col.index()]
+    }
 }
 
 fn bound_value<N: Into<f64> + Copy>(b: Bound<&N>) -> Option<f64> {
@@ -255,6 +266,9 @@ macro_rules! highs_call {
         )
     }
 }
+
+// Declared after `highs_call!` so that the macro is in scope in this module.
+mod iis;
 
 /// A model to solve
 #[derive(Debug)]
@@ -423,6 +437,12 @@ impl Model {
         self.highs.num_rows().expect("num rows does not fit usize")
     }
 
+    /// Gets the number of non-zero coefficients in the constraint matrix
+    pub fn num_nz(&self) -> usize {
+        let n = unsafe { Highs_getNumNz(self.as_ptr()) };
+        n.try_into().expect("num nz does not fit usize")
+    }
+
     /// Create a Highs model to be optimized (but don't solve it yet).
     /// If the given problem is a [RowProblem], it will have to be converted to a [ColProblem] first,
     /// which takes an amount of time proportional to the size of the problem.
@@ -438,7 +458,81 @@ impl Model {
     pub fn try_new<P: Into<Problem<ColMatrix>>>(problem: P) -> Result<Self, HighsStatus> {
         let mut highs = HighsPtr::default();
         highs.make_quiet();
+        Self::pass_problem(&mut highs, &problem.into())?;
+        Ok(Self { highs })
+    }
+
+    /// Replaces the model with the given problem, but keeps the HiGHS instance and its options.
+    ///
+    /// As with [`Model::new`], the objective sense is reset to minimisation
+    /// (see [`Model::set_sense`]), and a [RowProblem] is first converted to a [ColProblem].
+    ///
+    /// # Panics
+    ///
+    /// If the problem is incoherent.
+    pub fn overwrite<P: Into<Problem<ColMatrix>>>(&mut self, problem: P) {
+        self.try_overwrite(problem).expect("incoherent problem")
+    }
+
+    /// Tries to replace the model with the given problem, but keeps the HiGHS instance and its options.
+    ///
+    /// As with [`Model::try_new`], the objective sense is reset to minimisation
+    /// (see [`Model::set_sense`]), and a [RowProblem] is first converted to a [ColProblem].
+    ///
+    /// Returns an error if the problem is incoherent.
+    pub fn try_overwrite<P: Into<Problem<ColMatrix>>>(
+        &mut self,
+        problem: P,
+    ) -> Result<(), HighsStatus> {
         let problem = problem.into();
+        self.try_clear_model()?;
+        Self::pass_problem(&mut self.highs, &problem)?;
+        Ok(())
+    }
+
+    /// Removes all variables and constraints, but keeps the HiGHS instance and its options.
+    ///
+    /// # Panics
+    ///
+    /// If HIGHS returns an error status value.
+    pub fn clear_model(&mut self) {
+        self.try_clear_model()
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
+    }
+
+    /// Tries to remove all variables and constraints, but keeps the HiGHS instance and its options.
+    ///
+    /// Returns the error status value if HIGHS returned an error status.
+    pub fn try_clear_model(&mut self) -> Result<(), HighsStatus> {
+        unsafe { highs_call!(Highs_clearModel(self.highs.mut_ptr())) }?;
+        Ok(())
+    }
+
+    /// Resets the solver state (basis and solution) but keeps the problem data,
+    /// so that the next solve starts from scratch.
+    ///
+    /// # Panics
+    ///
+    /// If HIGHS returns an error status value.
+    pub fn clear_solver(&mut self) {
+        self.try_clear_solver()
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
+    }
+
+    /// Tries to reset the solver state (basis and solution) but keeps the problem data,
+    /// so that the next solve starts from scratch.
+    ///
+    /// Returns the error status value if HIGHS returned an error status.
+    pub fn try_clear_solver(&mut self) -> Result<(), HighsStatus> {
+        unsafe { highs_call!(Highs_clearSolver(self.highs.mut_ptr())) }?;
+        Ok(())
+    }
+
+    /// Pass the problem data to a HiGHS instance with an empty model
+    fn pass_problem(
+        highs: &mut HighsPtr,
+        problem: &Problem<ColMatrix>,
+    ) -> Result<HighsStatus, HighsStatus> {
         log::debug!(
             "Adding a problem with {} variables and {} constraints to HiGHS",
             problem.num_cols(),
@@ -484,7 +578,6 @@ impl Model {
                     problem.matrix.avalue.as_ptr()
                 ))
             }
-            .map(|_| Self { highs })
         }
     }
 
@@ -554,6 +647,70 @@ impl Model {
     pub fn try_solve(mut self) -> Result<SolvedModel, HighsStatus> {
         unsafe { highs_call!(Highs_run(self.highs.mut_ptr())) }
             .map(|_| SolvedModel { highs: self.highs })
+    }
+
+    /// Find the optimal value for the problem, keeping the model alive.
+    ///
+    /// Unlike [`Model::solve`], this does not consume the model: it can be modified and solved
+    /// again, and HiGHS warm-starts from the previous basis.
+    ///
+    /// Returns the resulting model status.
+    ///
+    /// # Panics
+    ///
+    /// If HIGHS returns an error status value.
+    pub fn solve_in_place(&mut self) -> HighsModelStatus {
+        self.try_solve_in_place()
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
+    }
+
+    /// Find the optimal value for the problem, keeping the model alive.
+    ///
+    /// Unlike [`Model::try_solve`], this does not consume the model: it can be modified and
+    /// solved again, and HiGHS warm-starts from the previous basis.
+    ///
+    /// Returns the resulting model status, or the error status value if HIGHS returned an error status.
+    pub fn try_solve_in_place(&mut self) -> Result<HighsModelStatus, HighsStatus> {
+        unsafe { highs_call!(Highs_run(self.highs.mut_ptr())) }?;
+        Ok(self.status())
+    }
+
+    /// The model status after the last solve ([`HighsModelStatus::NotSet`] before any solve).
+    pub fn status(&self) -> HighsModelStatus {
+        let model_status = unsafe { Highs_getModelStatus(self.highs.unsafe_mut_ptr()) };
+        HighsModelStatus::try_from(model_status).unwrap()
+    }
+
+    /// The objective value after the last solve.
+    ///
+    /// If an error occurs (e.g. the model is infeasible) then the returned value may be zero.
+    pub fn objective_value(&self) -> f64 {
+        unsafe { Highs_getObjectiveValue(self.as_ptr()) }
+    }
+
+    /// The solution found by the last solve.
+    pub fn get_solution(&self) -> Solution {
+        let cols = self.num_cols();
+        let rows = self.num_rows();
+        let mut colvalue: Vec<f64> = vec![0.; cols];
+        let mut coldual: Vec<f64> = vec![0.; cols];
+        let mut rowvalue: Vec<f64> = vec![0.; rows];
+        let mut rowdual: Vec<f64> = vec![0.; rows];
+        unsafe {
+            Highs_getSolution(
+                self.highs.unsafe_mut_ptr(),
+                colvalue.as_mut_ptr(),
+                coldual.as_mut_ptr(),
+                rowvalue.as_mut_ptr(),
+                rowdual.as_mut_ptr(),
+            );
+        }
+        Solution {
+            colvalue,
+            coldual,
+            rowvalue,
+            rowdual,
+        }
     }
 
     /// Adds a new constraint to the highs model.
@@ -830,6 +987,50 @@ impl Model {
             ))
             .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"));
         }
+    }
+
+    /// The current bounds `(lower, upper)` of a column.
+    ///
+    /// # Panics
+    ///
+    /// If the column does not exist.
+    pub fn get_column_bounds(&self, col: Col) -> (f64, f64) {
+        let (_, lower, upper) = self.column_data(col);
+        (lower, upper)
+    }
+
+    /// The current objective coefficient of a column.
+    ///
+    /// # Panics
+    ///
+    /// If the column does not exist.
+    pub fn get_column_cost(&self, col: Col) -> f64 {
+        self.column_data(col).0
+    }
+
+    /// `(cost, lower, upper)` of a column
+    fn column_data(&self, col: Col) -> (f64, f64, f64) {
+        let index = c(col.index());
+        let mut num_col: HighsInt = 0;
+        let mut num_nz: HighsInt = 0;
+        let (mut cost, mut lower, mut upper) = (0., 0., 0.);
+        unsafe {
+            highs_call!(Highs_getColsByRange(
+                self.as_ptr(),
+                index,
+                index,
+                &mut num_col,
+                &mut cost,
+                &mut lower,
+                &mut upper,
+                &mut num_nz,
+                null_mut(),
+                null_mut(),
+                null_mut()
+            ))
+        }
+        .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"));
+        (cost, lower, upper)
     }
 
     /// Hot-starts at the initial guess. See HIGHS documentation for further details.
