@@ -10,6 +10,19 @@ use crate::{Integrality, Problem};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Row(pub(crate) c_int);
 
+impl Row {
+    /// Gets the index of the row
+    pub fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl From<usize> for Row {
+    fn from(index: usize) -> Self {
+        Row(crate::c(index))
+    }
+}
+
 /// A constraint matrix to build column-by-column
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ColMatrix {

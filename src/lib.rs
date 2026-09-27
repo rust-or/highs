@@ -801,6 +801,131 @@ impl Model {
         )
     }
 
+    /// Adds several constraints to the model at once.
+    ///
+    /// Each item of `rows` holds the bounds of a new row, as in [`Model::add_row`],
+    /// and its `(column, coefficient)` pairs.
+    /// Rows with different kinds of bounds can be mixed with `(Bound, Bound)` pairs,
+    /// e.g. `(Bound::Unbounded, Bound::Included(1.))` for `<= 1`.
+    ///
+    /// The new rows are numbered in order, from the [`Model::num_rows`] before the call.
+    ///
+    /// # Panics
+    ///
+    /// If HIGHS returns an error status value.
+    pub fn add_rows<N, B, R>(&mut self, rows: impl IntoIterator<Item = (B, R)>)
+    where
+        N: Into<f64> + Copy,
+        B: RangeBounds<N>,
+        R: IntoIterator<Item = (Col, f64)>,
+    {
+        self.try_add_rows(rows)
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
+    }
+
+    /// Tries to add several constraints to the model at once.
+    ///
+    /// Each item of `rows` holds the bounds of a new row, as in [`Model::add_row`],
+    /// and its `(column, coefficient)` pairs.
+    /// Rows with different kinds of bounds can be mixed with `(Bound, Bound)` pairs,
+    /// e.g. `(Bound::Unbounded, Bound::Included(1.))` for `<= 1`.
+    ///
+    /// The new rows are numbered in order, from the [`Model::num_rows`] before the call.
+    ///
+    /// Returns the error status value if HIGHS returned an error status.
+    pub fn try_add_rows<N, B, R>(
+        &mut self,
+        rows: impl IntoIterator<Item = (B, R)>,
+    ) -> Result<(), HighsStatus>
+    where
+        N: Into<f64> + Copy,
+        B: RangeBounds<N>,
+        R: IntoIterator<Item = (Col, f64)>,
+    {
+        let mut lower = Vec::new();
+        let mut upper = Vec::new();
+        let mut starts = Vec::new();
+        let mut index = Vec::new();
+        let mut value = Vec::new();
+        for (bounds, row) in rows {
+            lower.push(bound_value(bounds.start_bound()).unwrap_or(f64::NEG_INFINITY));
+            upper.push(bound_value(bounds.end_bound()).unwrap_or(f64::INFINITY));
+            starts.push(c(index.len()));
+            for (col, factor) in row {
+                index.push(c(col.index()));
+                value.push(factor);
+            }
+        }
+        unsafe {
+            highs_call!(Highs_addRows(
+                self.highs.mut_ptr(),
+                c(lower.len()),
+                lower.as_ptr(),
+                upper.as_ptr(),
+                c(value.len()),
+                starts.as_ptr(),
+                index.as_ptr(),
+                value.as_ptr()
+            ))
+        }?;
+        Ok(())
+    }
+
+    /// Adds several continuous variables to the model at once, with a zero cost
+    /// and no coefficient in the existing constraints.
+    ///
+    /// Each item of `bounds` holds the bounds of a new column, as in [`Model::add_col`].
+    ///
+    /// The new columns are numbered in order, from the [`Model::num_cols`] before the call.
+    ///
+    /// # Panics
+    ///
+    /// If HIGHS returns an error status value.
+    pub fn add_columns<N, B>(&mut self, bounds: impl IntoIterator<Item = B>)
+    where
+        N: Into<f64> + Copy,
+        B: RangeBounds<N>,
+    {
+        self.try_add_columns(bounds)
+            .unwrap_or_else(|e| panic!("HiGHS error: {e:?}"))
+    }
+
+    /// Tries to add several continuous variables to the model at once, with a zero cost
+    /// and no coefficient in the existing constraints.
+    ///
+    /// Each item of `bounds` holds the bounds of a new column, as in [`Model::add_col`].
+    ///
+    /// The new columns are numbered in order, from the [`Model::num_cols`] before the call.
+    ///
+    /// Returns the error status value if HIGHS returned an error status.
+    pub fn try_add_columns<N, B>(
+        &mut self,
+        bounds: impl IntoIterator<Item = B>,
+    ) -> Result<(), HighsStatus>
+    where
+        N: Into<f64> + Copy,
+        B: RangeBounds<N>,
+    {
+        let (lower, upper): (Vec<f64>, Vec<f64>) = bounds
+            .into_iter()
+            .map(|bounds| {
+                (
+                    bound_value(bounds.start_bound()).unwrap_or(f64::NEG_INFINITY),
+                    bound_value(bounds.end_bound()).unwrap_or(f64::INFINITY),
+                )
+            })
+            .unzip();
+        unsafe {
+            highs_call!(Highs_addVars(
+                self.highs.mut_ptr(),
+                c(lower.len()),
+                lower.as_ptr(),
+                upper.as_ptr()
+            ))
+        }?;
+        Ok(())
+    }
+
     /// Updates the cost of a column
     pub fn change_column_cost(&mut self, col: Col, cost: f64) {
         unsafe {
