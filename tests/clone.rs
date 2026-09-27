@@ -76,3 +76,27 @@ fn clone_preserves_hessian() {
     let x = solved.get_solution().columns()[0];
     assert!((x - 1.).abs() < 1e-6, "x = {x}");
 }
+
+#[test]
+fn clone_preserves_semi_variables() {
+    // x in {0} U [5, 10] with x <= 7.5: minimising gives x = 0 (x = 5 if the semi-variable type
+    // were lost), and maximising gives x = 7.5 if x is semi-continuous, x = 7 if semi-integer.
+    for semi_integer in [false, true] {
+        let max = if semi_integer { 7. } else { 7.5 };
+        for (sense, expected) in [(Sense::Minimise, 0.), (Sense::Maximise, max)] {
+            let mut model = ColProblem::new().optimise(sense);
+            let x = if semi_integer {
+                model.add_semi_integer_column(1., 5.0..=10.0, [])
+            } else {
+                model.add_semi_continuous_column(1., 5.0..=10.0, [])
+            };
+            model.add_row(..=7.5, [(x, 1.)]);
+            let before_solve = model.clone().solve();
+            let after_solve = Model::from(model.solve()).clone().solve();
+            for solved in [before_solve, after_solve] {
+                let x = solved.get_solution().columns()[0];
+                assert_eq!(x, expected, "semi_integer: {semi_integer}, {sense:?}");
+            }
+        }
+    }
+}
