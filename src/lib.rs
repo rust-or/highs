@@ -117,10 +117,11 @@ use std::ptr::{null, null_mut};
 
 use highs_sys::*;
 
+pub use iis::Iis;
 pub use matrix_col::{ColMatrix, Row};
 pub use matrix_row::{Col, RowMatrix};
 pub use options::{HighsOptionValue, TrySetOptionError};
-pub use status::{HighsModelStatus, HighsSolutionStatus, HighsStatus};
+pub use status::{HighsIisBoundStatus, HighsModelStatus, HighsSolutionStatus, HighsStatus};
 
 /// A problem where variables are declared first, and constraints are then added dynamically.
 /// See [`Problem<RowMatrix>`](Problem#impl-1).
@@ -265,6 +266,9 @@ macro_rules! highs_call {
         )
     }
 }
+
+// Declared after `highs_call!` so that the macro is in scope in this module.
+mod iis;
 
 /// A model to solve
 #[derive(Debug)]
