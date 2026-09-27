@@ -18,6 +18,12 @@ impl Col {
     }
 }
 
+impl From<usize> for Col {
+    fn from(index: usize) -> Self {
+        Col(index)
+    }
+}
+
 /// A complete optimization problem stored by row
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RowMatrix {
