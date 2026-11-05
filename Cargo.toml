@@ -4,7 +4,7 @@ version = "2.4.0"
 authors = ["Ophir LOJKINE", "rust-or"]
 edition = "2021"
 description = "Safe rust bindings for the HiGHS linear programming solver. See http://highs.dev."
-license = "MIT"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/rust-or/highs"
 keywords = ["linear-programming", "optimization", "math", "solver"]
 
