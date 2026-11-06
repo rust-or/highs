@@ -152,3 +152,36 @@ impl TryFrom<c_int> for HighsSolutionStatus {
         }
     }
 }
+
+/// The status of a bound of a column or row that is part of an IIS.
+#[derive(Clone, Copy, Debug, PartialOrd, PartialEq, Ord, Eq)]
+pub enum HighsIisBoundStatus {
+    /// The bound was dropped from the IIS
+    Dropped = IIS_BOUND_STATUS_DROPPED as isize,
+    /// No bound
+    Null = IIS_BOUND_STATUS_NULL as isize,
+    /// The column or row is free
+    Free = IIS_BOUND_STATUS_FREE as isize,
+    /// The lower bound is part of the IIS
+    Lower = IIS_BOUND_STATUS_LOWER as isize,
+    /// The upper bound is part of the IIS
+    Upper = IIS_BOUND_STATUS_UPPER as isize,
+    /// Both bounds are part of the IIS
+    Boxed = IIS_BOUND_STATUS_BOXED as isize,
+}
+
+impl TryFrom<c_int> for HighsIisBoundStatus {
+    type Error = InvalidStatus;
+
+    fn try_from(value: c_int) -> Result<Self, Self::Error> {
+        match value {
+            IIS_BOUND_STATUS_DROPPED => Ok(Self::Dropped),
+            IIS_BOUND_STATUS_NULL => Ok(Self::Null),
+            IIS_BOUND_STATUS_FREE => Ok(Self::Free),
+            IIS_BOUND_STATUS_LOWER => Ok(Self::Lower),
+            IIS_BOUND_STATUS_UPPER => Ok(Self::Upper),
+            IIS_BOUND_STATUS_BOXED => Ok(Self::Boxed),
+            n => Err(InvalidStatus(n)),
+        }
+    }
+}
