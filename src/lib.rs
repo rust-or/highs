@@ -1019,6 +1019,118 @@ impl From<SolvedModel> for Model {
     }
 }
 
+/// Cloning a model copies its problem data (variables, constraints, integrality, Hessian,
+/// objective sense and offset) and, when it has a valid basis, that basis,
+/// so that solving the clone warm-starts from it.
+/// A model modified since its last solve has no valid basis.
+///
+/// Solver options are **not** copied: set them again on the clone.
+impl Clone for Model {
+    fn clone(&self) -> Self {
+        let num_col = self.num_cols();
+        let num_row = self.num_rows();
+        let num_nz: usize = unsafe { Highs_getNumNz(self.as_ptr()) }
+            .try_into()
+            .expect("num nz does not fit usize");
+        let q_num_nz: usize = unsafe { Highs_getHessianNumNz(self.as_ptr()) }
+            .try_into()
+            .expect("hessian num nz does not fit usize");
+
+        let (mut out_num_col, mut out_num_row, mut out_num_nz, mut out_q_num_nz) = (0, 0, 0, 0);
+        let mut sense: HighsInt = 0;
+        let mut offset = 0.;
+        let mut col_cost = vec![0.; num_col];
+        let mut col_lower = vec![0.; num_col];
+        let mut col_upper = vec![0.; num_col];
+        let mut row_lower = vec![0.; num_row];
+        let mut row_upper = vec![0.; num_row];
+        let mut a_start: Vec<HighsInt> = vec![0; num_col];
+        let mut a_index: Vec<HighsInt> = vec![0; num_nz];
+        let mut a_value = vec![0.; num_nz];
+        let mut q_start: Vec<HighsInt> = vec![0; num_col];
+        let mut q_index: Vec<HighsInt> = vec![0; q_num_nz];
+        let mut q_value = vec![0.; q_num_nz];
+        // left untouched by HiGHS when the model has no integrality information
+        let mut integrality = vec![VAR_TYPE_CONTINUOUS; num_col];
+        unsafe {
+            highs_call!(Highs_getModel(
+                self.as_ptr(),
+                MATRIX_FORMAT_COLUMN_WISE,
+                kHighsHessianFormatTriangular,
+                &mut out_num_col,
+                &mut out_num_row,
+                &mut out_num_nz,
+                &mut out_q_num_nz,
+                &mut sense,
+                &mut offset,
+                col_cost.as_mut_ptr(),
+                col_lower.as_mut_ptr(),
+                col_upper.as_mut_ptr(),
+                row_lower.as_mut_ptr(),
+                row_upper.as_mut_ptr(),
+                a_start.as_mut_ptr(),
+                a_index.as_mut_ptr(),
+                a_value.as_mut_ptr(),
+                q_start.as_mut_ptr(),
+                q_index.as_mut_ptr(),
+                q_value.as_mut_ptr(),
+                integrality.as_mut_ptr()
+            ))
+        }
+        .expect("Highs_getModel failed");
+
+        let mut highs = HighsPtr::default();
+        highs.make_quiet();
+        let is_mip = integrality.iter().any(|&i| i != VAR_TYPE_CONTINUOUS);
+        unsafe {
+            highs_call!(Highs_passModel(
+                highs.mut_ptr(),
+                out_num_col,
+                out_num_row,
+                out_num_nz,
+                out_q_num_nz,
+                MATRIX_FORMAT_COLUMN_WISE,
+                kHighsHessianFormatTriangular,
+                sense,
+                offset,
+                col_cost.as_ptr(),
+                col_lower.as_ptr(),
+                col_upper.as_ptr(),
+                row_lower.as_ptr(),
+                row_upper.as_ptr(),
+                a_start.as_ptr(),
+                a_index.as_ptr(),
+                a_value.as_ptr(),
+                q_start.as_ptr(),
+                q_index.as_ptr(),
+                q_value.as_ptr(),
+                if is_mip { integrality.as_ptr() } else { null() }
+            ))
+        }
+        .expect("Highs_passModel failed");
+
+        // An invalid basis (e.g. after a modification of the model) is not worth copying
+        let mut validity = kHighsBasisValidityInvalid;
+        let status = unsafe {
+            Highs_getIntInfoValue(self.as_ptr(), c"basis_validity".as_ptr(), &mut validity)
+        };
+        if status == STATUS_OK && validity == kHighsBasisValidityValid {
+            let mut col_status: Vec<HighsInt> = vec![0; num_col];
+            let mut row_status: Vec<HighsInt> = vec![0; num_row];
+            unsafe {
+                Highs_getBasis(
+                    self.as_ptr(),
+                    col_status.as_mut_ptr(),
+                    row_status.as_mut_ptr(),
+                );
+                // An inconsistent basis is rejected by HiGHS: the clone then starts from scratch.
+                Highs_setBasis(highs.mut_ptr(), col_status.as_ptr(), row_status.as_ptr());
+            }
+        }
+        Self { highs }
+    }
+}
+
 #[derive(Debug)]
 struct HighsPtr(*mut c_void);
 
