@@ -52,6 +52,8 @@ pub enum HighsModelStatus {
     ReachedInterrupt = MODEL_STATUS_REACHED_INTERRUPT as isize,
     /// reached memory limit
     ReachedMemoryLimit = MODEL_STATUS_REACHED_MEMORY_LIMIT as isize,
+    /// Interrupted internally by HiGHS (distinct from a user interrupt).
+    HighsInterrupt = MODEL_STATUS_HIGHS_INTERRUPT as isize,
 }
 
 /// This error should never happen: an unexpected status was returned
@@ -94,7 +96,8 @@ impl TryFrom<c_int> for HighsModelStatus {
             MODEL_STATUS_REACHED_SOLUTION_LIMIT => Ok(Self::ReachedSolutionLimit),
             MODEL_STATUS_REACHED_INTERRUPT => Ok(Self::ReachedInterrupt),
             MODEL_STATUS_REACHED_MEMORY_LIMIT => Ok(Self::ReachedMemoryLimit),
-            n => Err(InvalidStatus(n)),
+            MODEL_STATUS_HIGHS_INTERRUPT => Ok(Self::HighsInterrupt),
+            n => Err(InvalidStatus(n))
         }
     }
 }
@@ -149,6 +152,24 @@ impl TryFrom<c_int> for HighsSolutionStatus {
             SOLUTION_STATUS_INFEASIBLE => Ok(Self::Infeasible),
             SOLUTION_STATUS_FEASIBLE => Ok(Self::Feasible),
             n => Err(InvalidStatus(n)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HighsModelStatus;
+    use highs_sys::{MODEL_STATUS_MAX, MODEL_STATUS_MIN};
+
+    #[test]
+    fn decodes_all_model_statuses_from_highs_sys() {
+        // HiGHS 1.16 added status 19 (kHighsInterrupt). Before the fix,
+        // decoding it returned InvalidStatus and SolvedModel::status() panicked.
+        for code in MODEL_STATUS_MIN..=MODEL_STATUS_MAX {
+            assert!(
+                HighsModelStatus::try_from(code).is_ok(),
+                "unrecognized HiGHS model status {code}"
+            );
         }
     }
 }
