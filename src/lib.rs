@@ -262,6 +262,57 @@ pub struct Model {
     highs: HighsPtr,
 }
 
+/// A linear objective to add to a [`Model`].
+#[derive(Clone, Debug)]
+pub struct LinearObjective {
+    /// One coefficient for each column in the model.
+    pub coefficients: Vec<f64>,
+    /// Multiplier used when HiGHS blends multiple objectives. Its absolute
+    /// value multiplies its contribution to the weighted sum, so a larger
+    /// absolute weight gives it more influence for objective values on the same
+    /// scale. A positive weight minimizes this objective and a negative weight
+    /// maximizes it. Weight does not set lexicographic priority.
+    pub weight: f64,
+}
+
+impl LinearObjective {
+    /// Create a linear objective with blending weight 1.
+    pub fn new(coefficients: Vec<f64>) -> Self {
+        Self {
+            coefficients,
+            weight: 1.0,
+        }
+    }
+}
+
+/// An error while adding a linear objective.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinearObjectiveError {
+    /// Coefficients do not match the model's number of columns.
+    WrongCoefficientCount {
+        /// Number of coefficients required by the model.
+        expected: usize,
+        /// Number of coefficients supplied by the objective.
+        actual: usize,
+    },
+    /// HiGHS rejected the objective.
+    Highs(HighsStatus),
+}
+
+impl std::fmt::Display for LinearObjectiveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WrongCoefficientCount { expected, actual } => write!(
+                f,
+                "linear objective has {actual} coefficients; expected {expected}"
+            ),
+            Self::Highs(status) => write!(f, "HiGHS rejected the linear objective: {status:?}"),
+        }
+    }
+}
+
+impl std::error::Error for LinearObjectiveError {}
+
 /// A solved model
 #[derive(Debug)]
 pub struct SolvedModel {
@@ -597,6 +648,60 @@ impl Model {
         }?;
 
         Ok(Row((self.highs.num_rows()? - 1) as c_int))
+    }
+
+    /// Add a linear objective to the model using HiGHS' default objective
+    /// offset, tolerances, and priority.
+    ///
+    /// The objective's weight scales its contribution to the blended objective.
+    /// For example, a negative weight maximizes that objective while the model
+    /// minimizes the weighted sum:
+    ///
+    /// ```
+    /// use highs::{LinearObjective, RowProblem, Sense};
+    ///
+    /// let mut problem = RowProblem::new();
+    /// let x = problem.add_column(0.0, 0.0..=1.0);
+    /// let y = problem.add_column(0.0, 0.0..=1.0);
+    /// problem.add_row(1.0.., [(x, 1.0), (y, 1.0)]);
+    ///
+    /// let mut model = problem.optimise(Sense::Minimise);
+    /// let mut maximize_x = LinearObjective::new(vec![1.0, 0.0]);
+    /// maximize_x.weight = -2.0;
+    /// model.try_add_linear_objective(maximize_x).unwrap();
+    /// model
+    ///     .try_add_linear_objective(LinearObjective::new(vec![0.0, 1.0]))
+    ///     .unwrap();
+    /// model.set_option("blend_multi_objectives", true);
+    ///
+    /// let solved = model.solve();
+    /// assert_eq!(solved.get_solution().columns(), &[1.0, 0.0]);
+    /// ```
+    pub fn try_add_linear_objective(
+        &mut self,
+        objective: LinearObjective,
+    ) -> Result<(), LinearObjectiveError> {
+        let expected = self.num_cols();
+        if objective.coefficients.len() != expected {
+            return Err(LinearObjectiveError::WrongCoefficientCount {
+                expected,
+                actual: objective.coefficients.len(),
+            });
+        }
+
+        unsafe {
+            highs_call!(Highs_addLinearObjective(
+                self.highs.mut_ptr(),
+                objective.weight,
+                0.0,
+                objective.coefficients.as_ptr(),
+                0.0,
+                0.0,
+                0
+            ))
+        }
+        .map_err(LinearObjectiveError::Highs)?;
+        Ok(())
     }
 
     /// Adds a new variable to the highs model.
