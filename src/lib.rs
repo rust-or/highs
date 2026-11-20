@@ -1107,7 +1107,7 @@ impl SolvedModel {
     /// The model status of the solution. Should be Optimal if everything went well.
     pub fn status(&self) -> HighsModelStatus {
         let model_status = unsafe { Highs_getModelStatus(self.highs.unsafe_mut_ptr()) };
-        HighsModelStatus::try_from(model_status).unwrap()
+        HighsModelStatus::from_raw_or_unknown(model_status)
     }
 
     /// The mip gap of the solution. Should be 0.0 if an optimal solution was
