@@ -72,6 +72,21 @@ impl Debug for InvalidStatus {
     }
 }
 
+impl HighsModelStatus {
+    /// Interpret status codes from newer HiGHS releases without panicking.
+    ///
+    /// Keep TryFrom strict so callers can still detect unsupported codes.
+    pub(crate) fn from_raw_or_unknown(value: c_int) -> Self {
+        match Self::try_from(value) {
+            Ok(status) => status,
+            Err(_) => {
+                log::warn!("Unrecognized HiGHS model status {value}; treating as Unknown");
+                Self::Unknown
+            }
+        }
+    }
+}
+
 impl TryFrom<c_int> for HighsModelStatus {
     type Error = InvalidStatus;
 
@@ -171,5 +186,17 @@ mod tests {
                 "unrecognized HiGHS model status {code}"
             );
         }
+    }
+
+    #[test]
+    fn unknown_future_model_status_does_not_panic() {
+        use highs_sys::MODEL_STATUS_MAX;
+
+        let future_code = MODEL_STATUS_MAX + 1;
+        assert!(HighsModelStatus::try_from(future_code).is_err());
+        assert_eq!(
+            HighsModelStatus::from_raw_or_unknown(future_code),
+            HighsModelStatus::Unknown
+        );
     }
 }
